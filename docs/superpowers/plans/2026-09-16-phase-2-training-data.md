@@ -19,6 +19,7 @@
 - Position mastery and repertoire-move mastery remain separate.
 - Training attempts are append-only during normal operation.
 - Attempt + mastery writes and graph/repertoire mutations are transactional.
+- `src/training/` must not import Dexie or any module under `src/persistence/`.
 - Dexie is the only module allowed to access IndexedDB directly.
 - Backup format version is separate from Dexie schema version.
 - Restore is replace-only, validates before mutation, creates a pre-restore backup, and is atomic.
@@ -29,12 +30,13 @@
 ## File Structure
 
 - `src/core/positionIdentity.ts` — corrected normalized training-position identity.
-- `src/training/types.ts` — durable plain-TypeScript training entities, summaries, and backup envelope type.
+- `src/training/types.ts` — durable plain-TypeScript training entities, summaries, move input, and backup envelope type.
+- `src/training/errors.ts` — domain errors such as invalid chess transitions.
 - `src/training/repositories.ts` — storage-agnostic normal/admin repository contracts.
 - `src/training/graph.ts` — pure chess transition derivation/validation.
 - `src/training/mastery.ts` — non-adaptive aggregate mastery/stat updates.
 - `src/persistence/db.ts` — Dexie table declarations, indexes, schema versions, migrations.
-- `src/persistence/errors.ts` — typed persistence/application failures.
+- `src/persistence/errors.ts` — storage/transaction/migration failures only.
 - `src/persistence/dexieTrainingRepository.ts` — repository implementation and graph/attempt transactions.
 - `src/persistence/backupSchema.ts` — Zod runtime schemas plus referential/chess-semantic validation.
 - `src/persistence/backup.ts` — export, pre-restore snapshot, atomic restore, reset helpers.
@@ -136,12 +138,13 @@ git commit -m "fix: normalize ineffective en passant position keys"
 **Files:**
 - Modify: `package.json`, `package-lock.json`
 - Create: `src/training/types.ts`
+- Create: `src/training/errors.ts`
 - Create: `src/training/repositories.ts`
 - Create: `src/training/types.test.ts`
 
 **Interfaces:**
-- Produces every stable Phase 2 entity/type used by later tasks.
-- No file in `src/training/` may import Dexie.
+- Produces every stable Phase 2 domain type used by later tasks.
+- No file in this task imports Dexie.
 
 - [ ] **Step 1: Install pinned Phase 2 dependencies**
 
@@ -162,14 +165,21 @@ test('creates RFC 4122 version-4 UUID entity ids', () => {
 });
 ```
 
-- [ ] **Step 3: Define exact entity types in `src/training/types.ts`**
+- [ ] **Step 3: Define exact domain types in `src/training/types.ts`**
 
 ```ts
+import type { Square } from 'chess.js';
+
 export type EntityId = string;
 export type IsoTimestamp = string;
 export type RepertoireSide = 'white' | 'black' | 'mixed';
 export type RepertoireMoveRole = 'learner' | 'opponent' | 'alternative';
 export type MasteryState = 'new' | 'learning' | 'familiar' | 'mastered';
+export type TrainingMoveInput = {
+  from: Square;
+  to: Square;
+  promotion?: 'q' | 'r' | 'b' | 'n';
+};
 
 export type LearnerProfile = {
   id: EntityId;
@@ -192,8 +202,8 @@ export type MoveEdge = {
   fromPositionId: EntityId;
   toPositionId: EntityId;
   moveKey: string;
-  from: string;
-  to: string;
+  from: Square;
+  to: Square;
   promotion?: 'q' | 'r' | 'b' | 'n';
   san: string;
   createdAt: IsoTimestamp;
@@ -346,13 +356,24 @@ export type TrainingBackupV1 = {
 export const createId = (): EntityId => crypto.randomUUID();
 ```
 
-- [ ] **Step 4: Define exact repository contracts in `src/training/repositories.ts`**
+- [ ] **Step 4: Add domain error in `src/training/errors.ts`**
+
+```ts
+export class InvalidChessEdgeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidChessEdgeError';
+  }
+}
+```
+
+- [ ] **Step 5: Define exact repository contracts in `src/training/repositories.ts`**
 
 ```ts
 export type RepertoireTransitionInput = {
   repertoireId: EntityId;
   fromFen: string;
-  move: { from: string; to: string; promotion?: 'q' | 'r' | 'b' | 'n' };
+  move: TrainingMoveInput;
   role: RepertoireMoveRole;
   preferred: boolean;
   trainable: boolean;
@@ -392,7 +413,7 @@ export interface TrainingAdminRepository {
 }
 ```
 
-- [ ] **Step 5: Run test/typecheck**
+- [ ] **Step 6: Run test/typecheck**
 
 ```bash
 npm test -- src/training/types.test.ts
@@ -401,7 +422,7 @@ npm run typecheck
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add package.json package-lock.json src/training/
@@ -419,8 +440,8 @@ git commit -m "feat: define phase 2 training domain contracts"
 - Create: `src/persistence/dexieTrainingRepository.test.ts`
 
 **Interfaces:**
-- Consumes: `positionKeyFromFen`, Phase 2 types/contracts.
-- Produces: `deriveTransition(fromFen, move)` and `DexieTrainingRepository`.
+- Consumes: `positionKeyFromFen`, `TrainingMoveInput`, `InvalidChessEdgeError`, Phase 2 contracts.
+- Produces: `deriveTransition(fromFen: string, move: TrainingMoveInput)` and `DexieTrainingRepository`.
 
 - [ ] **Step 1: Write failing graph tests**
 
@@ -433,45 +454,43 @@ expect(result.san).toBe('e4');
 expect(result.moveKey).toBe('e2e4');
 expect(result.fromPositionKey).toContain(' w KQkq ');
 expect(result.toPositionKey).toContain(' b KQkq ');
-expect(() => deriveTransition(result.fromFen, { from: 'e2', to: 'e5' })).toThrow();
+expect(() => deriveTransition(result.fromFen, { from: 'e2', to: 'e5' })).toThrow(
+  InvalidChessEdgeError,
+);
 ```
 
-- [ ] **Step 2: Implement `deriveTransition`**
+- [ ] **Step 2: Implement `deriveTransition` in the training domain**
 
 ```ts
-export function deriveTransition(
-  fromFen: string,
-  moveInput: { from: string; to: string; promotion?: 'q' | 'r' | 'b' | 'n' },
-) {
-  const chess = new Chess(fromFen);
-  const fromPositionKey = positionKeyFromFen(fromFen);
-  const move = chess.move(moveInput);
-  const toFen = chess.fen();
-  return {
-    fromFen,
-    fromPositionKey,
-    toFen,
-    toPositionKey: positionKeyFromFen(toFen),
-    moveKey: `${move.from}${move.to}${move.promotion ?? ''}`,
-    from: move.from,
-    to: move.to,
-    promotion: move.promotion,
-    san: move.san,
-  };
+export function deriveTransition(fromFen: string, moveInput: TrainingMoveInput) {
+  try {
+    const chess = new Chess(fromFen);
+    const fromPositionKey = positionKeyFromFen(fromFen);
+    const move = chess.move(moveInput);
+    const toFen = chess.fen();
+    return {
+      fromFen,
+      fromPositionKey,
+      toFen,
+      toPositionKey: positionKeyFromFen(toFen),
+      moveKey: `${move.from}${move.to}${move.promotion ?? ''}`,
+      from: move.from,
+      to: move.to,
+      promotion: move.promotion,
+      san: move.san,
+    };
+  } catch (error) {
+    if (error instanceof InvalidChessEdgeError) throw error;
+    throw new InvalidChessEdgeError(
+      error instanceof Error ? error.message : 'Invalid chess transition',
+    );
+  }
 }
 ```
 
-Catch chess.js move failures and throw `InvalidChessEdgeError` from `src/persistence/errors.ts`.
-
 - [ ] **Step 3: Write failing persistence tests against `fake-indexeddb`**
 
-Each test file begins with:
-
-```ts
-import 'fake-indexeddb/auto';
-```
-
-Each test database uses `new ChessTrainingDatabase(`test-${crypto.randomUUID()}`)` and calls `await db.delete()` in cleanup.
+Each persistence test begins with `import 'fake-indexeddb/auto';`. Each database uses `new ChessTrainingDatabase(`test-${crypto.randomUUID()}`)` and `await db.delete()` in cleanup.
 
 Required RED cases:
 - `ensureLocalLearner()` is idempotent;
@@ -512,19 +531,21 @@ type LocalBackupRecord = {
 };
 ```
 
-Version 1 uses the same definitions except `localBackups` is absent. Do not clear or recreate user stores during upgrade.
+Version 1 uses the same definitions except `localBackups` is absent. Do not clear/recreate user stores during upgrade.
 
-- [ ] **Step 5: Implement graph/repertoire mutation transaction**
+- [ ] **Step 5: Implement persistence-only errors in `src/persistence/errors.ts`**
 
-`upsertRepertoireTransition` must call `deriveTransition` before writing, then use one Dexie `rw` transaction to get-or-create source/destination positions, move edge, repertoire-position membership, and repertoire-move context. Existing edge `[fromPositionId+moveKey]` must point to the derived destination or the operation throws `InvalidChessEdgeError` and rolls back.
+Define `StorageUnavailableError`, `StorageQuotaError`, `MigrationError`, `TransactionError`, `InvalidBackupError`, `UnsupportedBackupVersionError`, `ReferentialIntegrityError`, `RestoreError`, and `ResetError`. Do not define `InvalidChessEdgeError` here; persistence imports that domain error from `src/training/errors.ts` when needed.
 
-Map IndexedDB/Dexie failures to typed errors: `StorageUnavailableError`, `StorageQuotaError`, `MigrationError`, and `TransactionError`.
+- [ ] **Step 6: Implement graph/repertoire mutation transaction**
 
-- [ ] **Step 6: Add migration-preservation test**
+`upsertRepertoireTransition` calls `deriveTransition` before writing, then runs one Dexie `rw` transaction to get-or-create source/destination positions, canonical edge, repertoire-position membership, and repertoire-move context. Existing edge `[fromPositionId+moveKey]` must point to the derived destination or throw `InvalidChessEdgeError` and roll back. Translate IndexedDB/Dexie failures into the storage errors above without wrapping `InvalidChessEdgeError` as a generic transaction failure.
 
-Open a legacy schema-version-1 database, insert learner and repertoire rows, close it, then open through current `ChessTrainingDatabase`. Assert both rows remain and version 2 exposes `localBackups`.
+- [ ] **Step 7: Add migration-preservation test**
 
-- [ ] **Step 7: Verify graph/persistence**
+Create a raw Dexie database with the exact version-1 store definitions, insert learner and repertoire rows, close it, then open through current `ChessTrainingDatabase`. Assert both rows remain and version 2 exposes `localBackups`.
+
+- [ ] **Step 8: Verify graph/persistence**
 
 ```bash
 npm test -- src/training/graph.test.ts src/persistence/dexieTrainingRepository.test.ts
@@ -533,7 +554,7 @@ npm run typecheck
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add src/training/graph* src/persistence/
@@ -554,7 +575,7 @@ git commit -m "feat: persist canonical repertoire graph with dexie"
 
 - [ ] **Step 1: Write failing mastery tests**
 
-Use a correct 1200ms outcome and incorrect 2400ms outcome. Assert counts, running average, timestamps, and repertoire streak behavior. `state`, `score`, `nextReviewAt`, and `schedulingData` must remain unchanged because Phase 2 does not implement an adaptive scheduler.
+Use a correct 1200ms outcome and incorrect 2400ms outcome. Assert counts, running average, timestamps, and repertoire streak behavior. `state`, `score`, `nextReviewAt`, and `schedulingData` remain unchanged because Phase 2 does not implement adaptive scheduling.
 
 - [ ] **Step 2: Implement pure aggregate helpers**
 
@@ -573,9 +594,9 @@ Add `nextPositionMastery(current, outcome, timestamp)` and `nextRepertoireMoveMa
 
 - [ ] **Step 3: Write failing atomic repository tests**
 
-Seed learner, repertoire, position, repertoire move, and optional session. After `recordAttempt`, assert one attempt exists, position mastery updates, repertoire-move mastery updates independently, session/context IDs are preserved, and attempt `masteryBefore`/`masteryAfter` match the actual stored state/score values.
+Seed learner, repertoire, position, repertoire move, and optional session. After `recordAttempt`, assert one attempt exists, position mastery updates, repertoire-move mastery updates independently, session/context IDs are preserved, and attempt `masteryBefore`/`masteryAfter` match stored state/score values.
 
-Rollback case: call `recordAttempt` with a nonexistent `repertoireMoveId`. Inside the implementation, add the attempt within the transaction before resolving/updating that repertoire mastery record. The missing context must throw; afterward assert attempt count and both mastery tables are unchanged, proving transaction rollback.
+Rollback case: call `recordAttempt` with a nonexistent `repertoireMoveId`. Inside the implementation, insert the attempt within the transaction before resolving/updating that repertoire-mastery context. The missing context then throws; afterward attempt count and both mastery tables must be unchanged, proving rollback.
 
 - [ ] **Step 4: Implement `recordAttempt`**
 
@@ -639,18 +660,18 @@ export const trainingBackupV1Schema: z.ZodType<TrainingBackupV1> = z.object({
 });
 ```
 
-Every ID field uses `z.string().uuid()`; enums mirror the exact unions in `types.ts`.
+Every entity ID uses `z.string().uuid()`; square schemas use `z.enum()` with the 64 legal algebraic square strings so persisted move edges cannot contain arbitrary strings.
 
 - [ ] **Step 3: Implement semantic validation after Zod parsing**
 
-Build maps/sets for IDs and position keys. Reject duplicates and broken references. For every move edge, call `deriveTransition(source.fen, stored move)` and require derived source key, `moveKey`, and destination key to match the stored source/destination records. Throw typed `InvalidBackupError`, `UnsupportedBackupVersionError`, `ReferentialIntegrityError`, or `InvalidChessEdgeError`.
+Build maps/sets for IDs and position keys. Reject duplicates and broken references. For every move edge, call `deriveTransition(source.fen, { from: edge.from, to: edge.to, promotion: edge.promotion })` and require derived source key, `moveKey`, and destination key to match stored source/destination records. Re-throw `InvalidChessEdgeError`; use `InvalidBackupError`, `UnsupportedBackupVersionError`, or `ReferentialIntegrityError` for other validation classes.
 
 - [ ] **Step 4: Write failing export/restore/reset tests**
 
 Test:
 1. seed → export → reset/clear → restore → export reproduces the same logical user dataset after ignoring `exportedAt`;
 2. structurally invalid, unsupported, referentially invalid, and chess-semantically invalid backups change no user rows;
-3. a forced mid-restore failure rolls back both clear and inserts;
+3. forced mid-restore failure rolls back both clear and inserts;
 4. successful restore leaves a latest pre-restore backup;
 5. reset clears user/training data, preserves DB version 2, and recreates one clean local learner.
 
@@ -668,11 +689,11 @@ export async function restoreBackupData(
 ): Promise<void>;
 ```
 
-The test passes `afterClear: () => { throw new Error('forced restore failure'); }`; production calls it with no hooks.
+The test passes `afterClear: () => { throw new Error('forced restore failure'); }`; production calls with no hooks.
 
 - [ ] **Step 5: Implement export and restore sequence**
 
-`exportBackup` reads all user/training tables in one read transaction and emits the type from Task 2. `restoreBackupData` must validate before mutation, store a pre-restore snapshot in `localBackups`, start one `rw` transaction across replaceable user tables, clear them, call `await hooks.afterClear?.()`, bulk-add imported rows preserving IDs, run final count/reference checks, then commit. `localBackups` is maintenance data and is not part of the replaceable dataset.
+`exportBackup` reads all user/training tables in one read transaction and emits the Task 2 type. `restoreBackupData` validates before mutation, stores a pre-restore snapshot in `localBackups`, starts one `rw` transaction across replaceable user tables, clears them, calls `await hooks.afterClear?.()`, bulk-adds imported rows preserving IDs, runs final count/reference checks, then commits. `localBackups` is maintenance data and is not part of the replaceable dataset.
 
 `resetTrainingData` clears all replaceable user/training tables transactionally, keeps `localBackups` and schema intact, then creates one new `Local learner` profile.
 
@@ -705,7 +726,7 @@ git commit -m "feat: add safe versioned training data backup restore"
 
 - [ ] **Step 1: Write failing service summary tests**
 
-Seed one learner, two repertoires, shared graph records, one attempt, and mastery. Assert `getSummary()` returns the exact `TrainingDataSummary` shape from Task 2, including two repertoire summaries, global counts, last activity, and schema version 2. On a fresh DB, `initialize()` must create exactly one learner and report zero repertoires/attempts.
+Seed one learner, two repertoires, shared graph records, one attempt, and mastery. Assert `getSummary()` returns the exact `TrainingDataSummary` shape from Task 2, including two repertoire summaries, global counts, last activity, and schema version 2. On a fresh DB, `initialize()` creates exactly one learner and reports zero repertoires/attempts.
 
 - [ ] **Step 2: Implement service**
 
@@ -784,7 +805,7 @@ git commit -m "feat: add training data admin service"
 
 Required cases:
 - initialization renders learner, repertoire names/counts, global counts, schema version, and last activity;
-- Export creates JSON `Blob` and a filename beginning `chess-decision-trainer-backup-`;
+- Export creates JSON `Blob` and filename beginning `chess-decision-trainer-backup-`;
 - invalid selected JSON shows validation failure and no replace action;
 - valid selected backup shows repertoire/position/attempt counts before replacement;
 - restore requires explicit `Replace local data` confirmation;
