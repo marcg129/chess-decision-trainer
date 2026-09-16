@@ -18,6 +18,12 @@ Phase 2 intentionally does **not** build the actual opening-training workflow, r
 6. **Restore/replace imports only.** A backup import replaces current local training data after full validation and pre-restore backup. True merge/conflict handling is deferred until sync exists.
 7. **Infrastructure-focused UI.** Phase 2 exposes only lightweight data inspection, backup, restore, and reset utilities. The actual trainer and repertoire authoring UI begin in later phases.
 
+## Identity conventions
+
+Application entity IDs are stable UUID strings generated at the domain boundary, not storage-layer auto-increment IDs. Backup/restore preserves these IDs exactly.
+
+Chess-position identity remains separate: the normalized `positionKey` is the canonical chess identity used for deduplication, while the UUID is the application/database identity used by relationships.
+
 ## Critical prerequisite: position identity correctness
 
 Phase 2 makes the Phase 1 normalized `positionKey` a unique canonical identity. That means its semantics must exactly match the approved Phase 1 specification before any persisted data relies on it.
@@ -105,22 +111,22 @@ UI and training code must not call Dexie tables directly.
 
 A canonical chess position record contains at minimum:
 
-- stable application ID
+- stable UUID
 - unique normalized `positionKey`
 - representative full FEN
 - side to move
 - created timestamp
 - updated timestamp
 
-`positionKey` is the chess-position identity. The application ID is the database identity. They are deliberately separate concepts.
+`positionKey` is the chess-position identity. The UUID is the database identity. They are deliberately separate concepts.
 
-A representative FEN may be retained for reconstruction/display, but deduplication is driven by normalized `positionKey`.
+The representative FEN exists to reconstruct/display a legal board state for that canonical node. Because canonical identity intentionally ignores halfmove/fullmove counters, the representative FEN must not be treated as a preserved historical game state or as evidence for draw-history adjudication.
 
 ### MoveEdge
 
 A canonical move edge contains at minimum:
 
-- stable ID
+- stable UUID
 - source position ID
 - destination position ID
 - source square
@@ -131,6 +137,8 @@ A canonical move edge contains at minimum:
 - created timestamp
 
 A move edge is unique by source canonical position plus normalized move identity. The same chess move should not be duplicated simply because multiple repertoires reference it.
+
+Move-edge creation must use the Phase 1 chess domain to verify that the move is legal from the source position and that applying it yields the destination position's normalized `positionKey`. The repository must not accept an internally inconsistent source/move/destination relationship as a valid graph edge.
 
 ### Transposition behavior
 
@@ -144,7 +152,7 @@ This is a core acceptance requirement because later training history must not fr
 
 Phase 2 supports exactly one local learner profile. It contains at minimum:
 
-- stable ID
+- stable UUID
 - display name or local label
 - created timestamp
 - updated timestamp
@@ -155,7 +163,7 @@ The schema may remain future-compatible with multiple learners, but Phase 2 must
 
 A repertoire contains at minimum:
 
-- stable ID
+- stable UUID
 - learner ID
 - name
 - intended side: White, Black, or mixed
@@ -170,6 +178,7 @@ Multiple repertoires may reference the same canonical positions and move edges.
 
 A repertoire-position membership record contains at minimum:
 
+- stable UUID
 - repertoire ID
 - canonical position ID
 - trainable flag
@@ -184,7 +193,7 @@ The pair `(repertoireId, positionId)` must be unique.
 
 A repertoire move links repertoire-specific meaning to a canonical move edge. It contains at minimum:
 
-- stable ID
+- stable UUID
 - repertoire ID
 - move edge ID
 - role: learner move, opponent response, or accepted alternative
@@ -203,6 +212,7 @@ Shared position mastery represents the learner's general familiarity with a cano
 
 It should support at minimum:
 
+- stable UUID
 - canonical position ID
 - total exposures/attempts
 - correct count
@@ -221,6 +231,7 @@ Repertoire-specific mastery represents whether the learner knows the intended mo
 
 It should support at minimum:
 
+- stable UUID
 - repertoire move ID
 - attempts
 - correct count
@@ -240,7 +251,7 @@ Position mastery and repertoire-move mastery must remain distinct records. Knowi
 
 A lightweight session record may be created for grouped practice and contains at minimum:
 
-- stable ID
+- stable UUID
 - optional repertoire ID
 - mode identifier
 - started timestamp
@@ -252,7 +263,7 @@ Phase 2 does not require a session UI, but session identity enables later analyt
 
 Every drill response is stored as an immutable attempt event. It contains at minimum:
 
-- stable ID
+- stable UUID
 - timestamp
 - optional session ID
 - repertoire ID
@@ -340,14 +351,15 @@ Use a runtime schema validator at the boundary. Validation must cover:
 - top-level format identifier
 - supported backup version
 - required field types
-- stable-ID uniqueness
+- stable-UUID uniqueness
 - unique position-key constraints
 - referential integrity between all related records
 - valid repertoire/move roles and enums
 - mastery references
 - attempt references
+- chess-graph semantics for every `MoveEdge`: the move must be legal from the source representative FEN and must normalize to the referenced destination `positionKey`
 
-A syntactically valid JSON file with broken references must still be rejected.
+A syntactically valid JSON file with broken references or impossible move edges must still be rejected.
 
 ## Restore/replace flow
 
@@ -392,6 +404,7 @@ The repository/persistence boundary should expose typed application failures inc
 - invalid backup
 - unsupported backup version
 - referential-integrity failure
+- invalid chess-graph edge
 - storage unavailable
 - quota/storage failure
 - migration failure
@@ -446,6 +459,8 @@ Required coverage:
 
 - canonical positions deduplicate by normalized `positionKey`
 - canonical move edges deduplicate by source position + move
+- illegal move edge is rejected
+- move edge whose destination does not match the applied move is rejected
 - transposed repertoire lines converge on one canonical position
 - multiple repertoires may reference the same canonical position independently
 - multiple repertoires may reference the same canonical move edge independently
@@ -466,6 +481,7 @@ Required coverage:
 - invalid import changes nothing
 - unsupported backup version changes nothing
 - referentially invalid backup changes nothing
+- chess-semantically invalid backup changes nothing
 - failed restore rolls back fully
 - automatic pre-restore backup is created before replacement
 - reset clears user data without corrupting the database/schema
@@ -504,19 +520,20 @@ Phase 2 is complete when all of the following are true:
 3. Transpositions do not duplicate canonical positions.
 4. The normalized position identity correctly ignores ineffective en-passant targets before becoming a persisted unique key.
 5. Canonical move edges are shared across repertoires when the underlying chess move/context is the same.
-6. Shared position mastery and repertoire-specific move mastery are distinct.
-7. Full training-attempt history is persisted with session/context/timing data.
-8. Data survives browser reloads through IndexedDB.
-9. All persistence is accessed through repository interfaces rather than direct Dexie use from UI/training code.
-10. Attempt/mastery updates and graph mutations are transactional.
-11. Export produces a complete versioned backup.
-12. Import validates the full backup before mutation.
-13. Restore creates a pre-restore backup and replaces current data atomically.
-14. Invalid or failed restores leave existing data unchanged.
-15. Reset safely clears user training data while preserving the database/schema.
-16. Automated tests cover identity, graph deduplication, mastery separation, transactions, migrations, persistence, backup/restore, and UI failure states.
-17. TypeScript checks, tests, production build, and browser persistence smoke pass.
-18. Phase 2 introduces no opening trainer, FSRS scheduling algorithm, Stockfish, accounts, cloud sync, or merge/conflict engine.
+6. Every canonical move edge is legal from its source and resolves to its referenced destination position.
+7. Shared position mastery and repertoire-specific move mastery are distinct.
+8. Full training-attempt history is persisted with session/context/timing data.
+9. Data survives browser reloads through IndexedDB.
+10. All persistence is accessed through repository interfaces rather than direct Dexie use from UI/training code.
+11. Attempt/mastery updates and graph mutations are transactional.
+12. Export produces a complete versioned backup.
+13. Import validates the full backup before mutation, including chess-graph semantics.
+14. Restore creates a pre-restore backup and replaces current data atomically.
+15. Invalid or failed restores leave existing data unchanged.
+16. Reset safely clears user training data while preserving the database/schema.
+17. Automated tests cover identity, graph deduplication, graph legality, mastery separation, transactions, migrations, persistence, backup/restore, and UI failure states.
+18. TypeScript checks, tests, production build, and browser persistence smoke pass.
+19. Phase 2 introduces no opening trainer, FSRS scheduling algorithm, Stockfish, accounts, cloud sync, or merge/conflict engine.
 
 ## Explicitly deferred
 
