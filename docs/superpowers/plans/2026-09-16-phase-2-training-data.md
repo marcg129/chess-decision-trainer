@@ -28,22 +28,23 @@
 
 ## File Structure
 
-- `src/core/positionIdentity.ts` — corrected normalized position identity.
-- `src/training/types.ts` — durable plain-TypeScript training entities and input types.
-- `src/training/repositories.ts` — storage-agnostic repository contracts.
+- `src/core/positionIdentity.ts` — corrected normalized training-position identity.
+- `src/training/types.ts` — durable plain-TypeScript training entities, summaries, and backup envelope type.
+- `src/training/repositories.ts` — storage-agnostic normal/admin repository contracts.
 - `src/training/graph.ts` — pure chess transition derivation/validation.
 - `src/training/mastery.ts` — non-adaptive aggregate mastery/stat updates.
-- `src/persistence/db.ts` — Dexie database/table declarations, indexes, versions, migrations.
-- `src/persistence/errors.ts` — typed persistence/application errors.
-- `src/persistence/dexieTrainingRepository.ts` — repository implementation and transactions.
-- `src/persistence/backupSchema.ts` — Zod schemas and semantic backup validation.
-- `src/persistence/backup.ts` — export, pre-restore snapshot, atomic restore, reset.
-- `src/services/trainingDataService.ts` — UI-facing summary/admin facade; no raw Dexie exposure.
-- `src/components/TrainingDataPanel.tsx` — minimal Phase 2 inspect/export/import/reset UI.
+- `src/persistence/db.ts` — Dexie table declarations, indexes, schema versions, migrations.
+- `src/persistence/errors.ts` — typed persistence/application failures.
+- `src/persistence/dexieTrainingRepository.ts` — repository implementation and graph/attempt transactions.
+- `src/persistence/backupSchema.ts` — Zod runtime schemas plus referential/chess-semantic validation.
+- `src/persistence/backup.ts` — export, pre-restore snapshot, atomic restore, reset helpers.
+- `src/persistence/browserRepository.ts` — browser singleton composition without exporting raw Dexie tables.
+- `src/services/trainingDataService.ts` — UI-facing admin/summary facade.
+- `src/components/TrainingDataPanel.tsx` — minimal inspect/export/import/reset UI.
 - `src/e2e/persistence.spec.ts` — real-browser IndexedDB reload smoke.
-- `playwright.config.ts` — Playwright configured to use system Chrome and Vite preview.
-- `.github/workflows/ci.yml` — run feature/main branch CI and browser persistence smoke.
-- Tests live beside the modules they cover; persistence tests import `fake-indexeddb/auto` and use unique database names.
+- `playwright.config.ts` — Playwright system-Chrome/Vite-preview configuration.
+- `.github/workflows/ci.yml` — clean install, tests, build, browser persistence smoke, screenshot smoke.
+- Tests live beside modules; persistence tests use `fake-indexeddb/auto` and unique database names.
 
 ---
 
@@ -113,7 +114,7 @@ export function positionKeyFromFen(fen: string): string {
 }
 ```
 
-- [ ] **Step 4: Run identity + chess-domain tests**
+- [ ] **Step 4: Verify identity and existing chess-domain behavior**
 
 ```bash
 npm test -- src/core/positionIdentity.test.ts src/core/game.test.ts
@@ -130,7 +131,7 @@ git commit -m "fix: normalize ineffective en passant position keys"
 
 ---
 
-### Task 2: Add Phase 2 dependencies, domain entities, and repository contracts
+### Task 2: Add dependencies, domain entities, summaries, backup type, and repository contracts
 
 **Files:**
 - Modify: `package.json`, `package-lock.json`
@@ -139,7 +140,7 @@ git commit -m "fix: normalize ineffective en passant position keys"
 - Create: `src/training/types.test.ts`
 
 **Interfaces:**
-- Produces stable entity types and repository interfaces consumed by every later Phase 2 task.
+- Produces every stable Phase 2 entity/type used by later tasks.
 - No file in `src/training/` may import Dexie.
 
 - [ ] **Step 1: Install pinned Phase 2 dependencies**
@@ -149,23 +150,19 @@ npm install dexie@4.4.6 zod@4.6.5
 npm install --save-dev fake-indexeddb@6.2.5 @playwright/test@1.63.0
 ```
 
-- [ ] **Step 2: Write failing type/domain construction tests**
-
-Create `src/training/types.test.ts` that constructs one complete fixture and verifies UUID-shaped IDs and distinct mastery contexts:
+- [ ] **Step 2: Write the first failing domain test**
 
 ```ts
 import { createId } from './types';
 
-test('creates stable UUID entity ids', () => {
+test('creates RFC 4122 version-4 UUID entity ids', () => {
   expect(createId()).toMatch(
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
   );
 });
 ```
 
-- [ ] **Step 3: Define exact domain types in `src/training/types.ts`**
-
-Use ISO timestamp strings and UUID strings:
+- [ ] **Step 3: Define exact entity types in `src/training/types.ts`**
 
 ```ts
 export type EntityId = string;
@@ -301,10 +298,55 @@ export type TrainingAttempt = {
   masteryAfter: AttemptMasterySnapshot;
 };
 
+export type RepertoireSummary = {
+  id: EntityId;
+  name: string;
+  side: RepertoireSide;
+  archived: boolean;
+  positions: number;
+  moves: number;
+  attempts: number;
+};
+
+export type TrainingDataSummary = {
+  learner: LearnerProfile;
+  repertoires: RepertoireSummary[];
+  counts: {
+    repertoires: number;
+    positions: number;
+    moveEdges: number;
+    positionMastery: number;
+    repertoireMoveMastery: number;
+    sessions: number;
+    attempts: number;
+  };
+  lastActivityAt: IsoTimestamp | null;
+  schemaVersion: number;
+};
+
+export type TrainingBackupV1 = {
+  format: 'chess-decision-trainer';
+  version: 1;
+  exportedAt: IsoTimestamp;
+  schemaVersion: number;
+  data: {
+    learnerProfiles: LearnerProfile[];
+    repertoires: Repertoire[];
+    positions: Position[];
+    moveEdges: MoveEdge[];
+    repertoirePositions: RepertoirePosition[];
+    repertoireMoves: RepertoireMove[];
+    positionMastery: PositionMastery[];
+    repertoireMoveMastery: RepertoireMoveMastery[];
+    trainingSessions: TrainingSession[];
+    trainingAttempts: TrainingAttempt[];
+  };
+};
+
 export const createId = (): EntityId => crypto.randomUUID();
 ```
 
-- [ ] **Step 4: Define repository contracts in `src/training/repositories.ts`**
+- [ ] **Step 4: Define exact repository contracts in `src/training/repositories.ts`**
 
 ```ts
 export type RepertoireTransitionInput = {
@@ -316,7 +358,10 @@ export type RepertoireTransitionInput = {
   trainable: boolean;
 };
 
-export type RecordAttemptInput = Omit<TrainingAttempt, 'id' | 'masteryBefore' | 'masteryAfter'>;
+export type RecordAttemptInput = Omit<
+  TrainingAttempt,
+  'id' | 'masteryBefore' | 'masteryAfter'
+>;
 
 export interface TrainingRepository {
   ensureLocalLearner(displayName?: string): Promise<LearnerProfile>;
@@ -331,15 +376,13 @@ export interface TrainingRepository {
   }>;
   getPositionByKey(positionKey: string): Promise<Position | undefined>;
   getPositionMastery(positionId: EntityId): Promise<PositionMastery | undefined>;
-  getRepertoireMoveMastery(repertoireMoveId: EntityId): Promise<RepertoireMoveMastery | undefined>;
+  getRepertoireMoveMastery(
+    repertoireMoveId: EntityId,
+  ): Promise<RepertoireMoveMastery | undefined>;
   recordAttempt(input: RecordAttemptInput): Promise<TrainingAttempt>;
   createSession(session: TrainingSession): Promise<void>;
 }
-```
 
-Add a separate admin interface so normal training code does not depend on destructive operations:
-
-```ts
 export interface TrainingAdminRepository {
   getSummary(): Promise<TrainingDataSummary>;
   exportBackup(): Promise<TrainingBackupV1>;
@@ -349,9 +392,7 @@ export interface TrainingAdminRepository {
 }
 ```
 
-Define `TrainingDataSummary` and `TrainingBackupV1` in `types.ts`; `TrainingBackupV1` uses `format: 'chess-decision-trainer'` and `version: 1`.
-
-- [ ] **Step 5: Run tests/typecheck**
+- [ ] **Step 5: Run test/typecheck**
 
 ```bash
 npm test -- src/training/types.test.ts
@@ -369,7 +410,7 @@ git commit -m "feat: define phase 2 training domain contracts"
 
 ---
 
-### Task 3: Implement canonical graph derivation and Dexie persistence schema
+### Task 3: Implement canonical graph derivation and Dexie schema/repository
 
 **Files:**
 - Create: `src/training/graph.ts`, `src/training/graph.test.ts`
@@ -378,12 +419,10 @@ git commit -m "feat: define phase 2 training domain contracts"
 - Create: `src/persistence/dexieTrainingRepository.test.ts`
 
 **Interfaces:**
-- Consumes: Phase 1 `positionKeyFromFen`, Phase 2 types/contracts.
-- Produces: `deriveTransition(fromFen, move)` and `DexieTrainingRepository` implementing training repository operations.
+- Consumes: `positionKeyFromFen`, Phase 2 types/contracts.
+- Produces: `deriveTransition(fromFen, move)` and `DexieTrainingRepository`.
 
-- [ ] **Step 1: Write failing pure graph tests**
-
-Test a legal transition and an illegal transition:
+- [ ] **Step 1: Write failing graph tests**
 
 ```ts
 const result = deriveTransition(
@@ -398,8 +437,6 @@ expect(() => deriveTransition(result.fromFen, { from: 'e2', to: 'e5' })).toThrow
 ```
 
 - [ ] **Step 2: Implement `deriveTransition`**
-
-Use `Chess` to validate/apply the move, then return exact source/destination FEN and normalized keys:
 
 ```ts
 export function deriveTransition(
@@ -424,31 +461,29 @@ export function deriveTransition(
 }
 ```
 
-Catch `chess.js` move errors and throw a domain `InvalidChessEdgeError` rather than exposing raw library errors.
+Catch chess.js move failures and throw `InvalidChessEdgeError` from `src/persistence/errors.ts`.
 
-- [ ] **Step 3: Write failing persistence tests using real IndexedDB semantics**
+- [ ] **Step 3: Write failing persistence tests against `fake-indexeddb`**
 
-At the top of the test file:
+Each test file begins with:
 
 ```ts
 import 'fake-indexeddb/auto';
 ```
 
-Create each test database with `new ChessTrainingDatabase(`test-${crypto.randomUUID()}`)` and call `await db.delete()` in cleanup.
+Each test database uses `new ChessTrainingDatabase(`test-${crypto.randomUUID()}`)` and calls `await db.delete()` in cleanup.
 
 Required RED cases:
-- `ensureLocalLearner()` is idempotent.
-- two calls creating the same normalized position return one `Position` row.
-- two different move orders reaching the same key reuse the same destination position.
-- the same canonical move edge can be referenced by two repertoires.
-- duplicate `(repertoireId, positionId)` and `(repertoireId, moveEdgeId)` relationships are reused, not duplicated.
-- close/reopen the same database name and confirm records persist.
+- `ensureLocalLearner()` is idempotent;
+- same normalized `positionKey` creates one position row;
+- two transposed move orders reuse the same destination position;
+- two repertoires reuse the same canonical move edge;
+- duplicate `(repertoireId, positionId)` and `(repertoireId, moveEdgeId)` relationships are reused;
+- close/reopen the same database name and records persist.
 
 - [ ] **Step 4: Implement centralized Dexie schema**
 
-`src/persistence/db.ts` defines typed tables and explicit versions. Use version 1 for core Phase 2 tables and version 2 to add `localBackups`, proving forward schema evolution without data deletion.
-
-Required version-2 store definitions:
+Use typed `Table<T, string>` properties. Version 1 contains all user/training tables. Version 2 repeats those stores and adds `localBackups`.
 
 ```ts
 this.version(2).stores({
@@ -466,26 +501,30 @@ this.version(2).stores({
 });
 ```
 
-Version 1 contains all entries above except `localBackups`; do not delete/recreate stores during the upgrade.
+Internal maintenance record:
 
-- [ ] **Step 5: Implement graph/repertoire transaction**
+```ts
+type LocalBackupRecord = {
+  id: string;
+  createdAt: string;
+  reason: 'pre-restore';
+  backup: TrainingBackupV1;
+};
+```
 
-`upsertRepertoireTransition` must:
-1. call `deriveTransition` before the write transaction;
-2. run one Dexie `rw` transaction over positions, edges, repertoirePositions, repertoireMoves;
-3. get-or-create source/destination positions by unique `positionKey`;
-4. get-or-create edge by `[fromPositionId+moveKey]`;
-5. verify an existing edge's `toPositionId` matches the derived destination;
-6. get-or-create repertoire membership/context records;
-7. return all persisted records.
+Version 1 uses the same definitions except `localBackups` is absent. Do not clear or recreate user stores during upgrade.
 
-Translate `ConstraintError`, quota/storage failures, and transaction errors into typed errors from `src/persistence/errors.ts`.
+- [ ] **Step 5: Implement graph/repertoire mutation transaction**
+
+`upsertRepertoireTransition` must call `deriveTransition` before writing, then use one Dexie `rw` transaction to get-or-create source/destination positions, move edge, repertoire-position membership, and repertoire-move context. Existing edge `[fromPositionId+moveKey]` must point to the derived destination or the operation throws `InvalidChessEdgeError` and rolls back.
+
+Map IndexedDB/Dexie failures to typed errors: `StorageUnavailableError`, `StorageQuotaError`, `MigrationError`, and `TransactionError`.
 
 - [ ] **Step 6: Add migration-preservation test**
 
-Create a legacy database at schema version 1, insert a learner/repertoire record, close it, then open it through current `ChessTrainingDatabase`. Assert the record remains and the `localBackups` table exists.
+Open a legacy schema-version-1 database, insert learner and repertoire rows, close it, then open through current `ChessTrainingDatabase`. Assert both rows remain and version 2 exposes `localBackups`.
 
-- [ ] **Step 7: Run targeted persistence verification**
+- [ ] **Step 7: Verify graph/persistence**
 
 ```bash
 npm test -- src/training/graph.test.ts src/persistence/dexieTrainingRepository.test.ts
@@ -511,15 +550,11 @@ git commit -m "feat: persist canonical repertoire graph with dexie"
 - Modify: `src/persistence/dexieTrainingRepository.test.ts`
 
 **Interfaces:**
-- Produces pure non-adaptive aggregate update helpers and atomic `recordAttempt` behavior.
+- Produces pure aggregate-stat helpers and transactional `recordAttempt`.
 
-- [ ] **Step 1: Write failing mastery-stat tests**
+- [ ] **Step 1: Write failing mastery tests**
 
-Use one correct 1200ms attempt and one incorrect 2400ms attempt. Assert:
-- attempts/correct/incorrect increments are exact;
-- running average decision time is deterministic;
-- correct increments repertoire streak, incorrect resets it to zero;
-- Phase 2 does not invent FSRS scheduling; `state`, `score`, `nextReviewAt`, and `schedulingData` remain caller-controlled/default values.
+Use a correct 1200ms outcome and incorrect 2400ms outcome. Assert counts, running average, timestamps, and repertoire streak behavior. `state`, `score`, `nextReviewAt`, and `schedulingData` must remain unchanged because Phase 2 does not implement an adaptive scheduler.
 
 - [ ] **Step 2: Implement pure aggregate helpers**
 
@@ -534,32 +569,25 @@ export function updateAverage(
 }
 ```
 
-Add `nextPositionMastery(current, outcome, timestamp)` and `nextRepertoireMoveMastery(current, outcome, timestamp)` that update only counts, speed, timestamps, and streak; leave adaptive fields unchanged.
+Add `nextPositionMastery(current, outcome, timestamp)` and `nextRepertoireMoveMastery(current, outcome, timestamp)`. New records start at `state: 'new'`, `score: 0`, `nextReviewAt: null`, `schedulingData: null`.
 
 - [ ] **Step 3: Write failing atomic repository tests**
 
-Seed learner, repertoire, position, move edge, repertoire move, and optional session. Call `recordAttempt` and assert in one successful result:
-- one attempt appended;
-- position mastery updated;
-- repertoire-move mastery updated independently;
-- attempt stores mastery before/after snapshots;
-- session ID/context are preserved.
+Seed learner, repertoire, position, repertoire move, and optional session. After `recordAttempt`, assert one attempt exists, position mastery updates, repertoire-move mastery updates independently, session/context IDs are preserved, and attempt `masteryBefore`/`masteryAfter` match the actual stored state/score values.
 
-For rollback, call `recordAttempt` with a nonexistent `repertoireMoveId`. Arrange repository code so the attempt insert occurs inside the transaction before the missing repertoire-move check raises. After rejection, assert attempts and both mastery tables are unchanged.
+Rollback case: call `recordAttempt` with a nonexistent `repertoireMoveId`. Inside the implementation, add the attempt within the transaction before resolving/updating that repertoire mastery record. The missing context must throw; afterward assert attempt count and both mastery tables are unchanged, proving transaction rollback.
 
-- [ ] **Step 4: Implement `recordAttempt` transaction**
+- [ ] **Step 4: Implement `recordAttempt`**
 
-Run one Dexie `rw` transaction over attempts + both mastery tables (+ sessions when referenced). Validate all IDs within the transaction, compute before snapshots, append exactly one immutable attempt, update position mastery, update repertoire-move mastery only when a context ID exists, then return the stored attempt.
+Run one Dexie `rw` transaction over `trainingAttempts`, both mastery tables, and `trainingSessions` when a session ID is supplied. Reject negative decision time/hint count, missing repertoire/position/session/context IDs, or a repertoire move belonging to a different repertoire. Capture state/score before updates, compute count/speed/streak updates, capture state/score after updates, store exactly one immutable attempt, and return it.
 
-Reject negative decision time, negative hint count, missing repertoire/position/session/context IDs, or a context record belonging to a different repertoire.
-
-- [ ] **Step 5: Verify mastery separation and rollback**
+- [ ] **Step 5: Verify layered mastery and rollback**
 
 ```bash
 npm test -- src/training/mastery.test.ts src/persistence/dexieTrainingRepository.test.ts
 ```
 
-Expected: PASS with explicit assertions that shared position mastery is not copied into repertoire-specific mastery.
+Expected: PASS, including assertions that position mastery is not copied into repertoire-move mastery.
 
 - [ ] **Step 6: Commit**
 
@@ -570,7 +598,7 @@ git commit -m "feat: record atomic training attempts and mastery"
 
 ---
 
-### Task 5: Implement validated versioned backup, restore, pre-restore recovery, and reset
+### Task 5: Implement versioned backup validation, export, restore, recovery, and reset
 
 **Files:**
 - Create: `src/persistence/backupSchema.ts`, `src/persistence/backupSchema.test.ts`
@@ -578,84 +606,77 @@ git commit -m "feat: record atomic training attempts and mastery"
 - Modify: `src/persistence/dexieTrainingRepository.ts`
 
 **Interfaces:**
-- Produces: `parseAndValidateBackup(input: unknown): TrainingBackupV1` and admin repository methods.
+- Consumes the single `TrainingBackupV1` type from `src/training/types.ts`; do not redefine it.
+- Produces `parseAndValidateBackup(input: unknown): TrainingBackupV1` and admin repository behavior.
 
-- [ ] **Step 1: Define failing runtime-schema tests**
+- [ ] **Step 1: Write failing runtime-validation tests**
 
-Required invalid cases:
-- wrong `format`;
-- unsupported `version`;
-- malformed UUID;
-- duplicate UUID;
-- duplicate `positionKey`;
-- missing repertoire/position/move references;
-- move edge illegal from source FEN;
-- legal move edge whose derived destination key differs from referenced destination.
+Required invalid cases: wrong format; unsupported version; malformed UUID; duplicate UUID; duplicate `positionKey`; broken repertoire/position/move/mastery/attempt reference; illegal move edge; legal move edge whose derived destination differs from the referenced destination. A valid small backup must parse successfully.
 
-A valid small backup must parse successfully.
-
-- [ ] **Step 2: Implement Zod structural schema**
-
-Top-level exact contract:
+- [ ] **Step 2: Implement Zod structural schema typed against `TrainingBackupV1`**
 
 ```ts
 export const BACKUP_FORMAT = 'chess-decision-trainer' as const;
 export const BACKUP_VERSION = 1 as const;
 
-export type TrainingBackupV1 = {
-  format: typeof BACKUP_FORMAT;
-  version: typeof BACKUP_VERSION;
-  exportedAt: string;
-  schemaVersion: number;
-  data: {
-    learnerProfiles: LearnerProfile[];
-    repertoires: Repertoire[];
-    positions: Position[];
-    moveEdges: MoveEdge[];
-    repertoirePositions: RepertoirePosition[];
-    repertoireMoves: RepertoireMove[];
-    positionMastery: PositionMastery[];
-    repertoireMoveMastery: RepertoireMoveMastery[];
-    trainingSessions: TrainingSession[];
-    trainingAttempts: TrainingAttempt[];
-  };
-};
+export const trainingBackupV1Schema: z.ZodType<TrainingBackupV1> = z.object({
+  format: z.literal(BACKUP_FORMAT),
+  version: z.literal(BACKUP_VERSION),
+  exportedAt: z.string(),
+  schemaVersion: z.number().int().positive(),
+  data: z.object({
+    learnerProfiles: z.array(learnerProfileSchema),
+    repertoires: z.array(repertoireSchema),
+    positions: z.array(positionSchema),
+    moveEdges: z.array(moveEdgeSchema),
+    repertoirePositions: z.array(repertoirePositionSchema),
+    repertoireMoves: z.array(repertoireMoveSchema),
+    positionMastery: z.array(positionMasterySchema),
+    repertoireMoveMastery: z.array(repertoireMoveMasterySchema),
+    trainingSessions: z.array(trainingSessionSchema),
+    trainingAttempts: z.array(trainingAttemptSchema),
+  }),
+});
 ```
 
-Use `z.string().uuid()` for entity IDs and strict enums for side/role/mastery state.
+Every ID field uses `z.string().uuid()`; enums mirror the exact unions in `types.ts`.
 
-- [ ] **Step 3: Implement semantic validation after Zod parse**
+- [ ] **Step 3: Implement semantic validation after Zod parsing**
 
-Build maps/sets for IDs and position keys; reject duplicates and broken references. For every `MoveEdge`, locate source/destination positions and call `deriveTransition(source.fen, edge move)`. Require derived source key to equal source `positionKey`, derived `moveKey` to equal stored `moveKey`, and derived destination key to equal destination `positionKey`.
+Build maps/sets for IDs and position keys. Reject duplicates and broken references. For every move edge, call `deriveTransition(source.fen, stored move)` and require derived source key, `moveKey`, and destination key to match the stored source/destination records. Throw typed `InvalidBackupError`, `UnsupportedBackupVersionError`, `ReferentialIntegrityError`, or `InvalidChessEdgeError`.
 
-Return typed `InvalidBackupError`, `UnsupportedBackupVersionError`, `ReferentialIntegrityError`, or `InvalidChessEdgeError`.
+- [ ] **Step 4: Write failing export/restore/reset tests**
 
-- [ ] **Step 4: Write failing export/restore/reset integration tests**
+Test:
+1. seed → export → reset/clear → restore → export reproduces the same logical user dataset after ignoring `exportedAt`;
+2. structurally invalid, unsupported, referentially invalid, and chess-semantically invalid backups change no user rows;
+3. a forced mid-restore failure rolls back both clear and inserts;
+4. successful restore leaves a latest pre-restore backup;
+5. reset clears user/training data, preserves DB version 2, and recreates one clean local learner.
 
-Verify:
-1. seed data → export → reset/clear → restore → export again yields the same logical dataset after ignoring `exportedAt` and pre-restore maintenance rows;
-2. invalid backup changes zero user-data rows;
-3. unsupported backup changes zero rows;
-4. forced failure during restore rolls back the clearing/inserts;
-5. successful restore leaves a downloadable pre-restore backup;
-6. reset clears all user/training tables, preserves database version, and recreates one clean local learner.
+For exact rollback injection, expose this persistence-only helper:
 
-- [ ] **Step 5: Implement backup/export/restore helpers**
+```ts
+export type RestoreHooks = {
+  afterClear?: () => void | Promise<void>;
+};
 
-`exportBackup` reads all user tables in a read transaction and emits `format/version/exportedAt/schemaVersion/data`.
+export async function restoreBackupData(
+  db: ChessTrainingDatabase,
+  backup: TrainingBackupV1,
+  hooks: RestoreHooks = {},
+): Promise<void>;
+```
 
-`restoreBackup` sequence:
-1. `parseAndValidateBackup` before opening a write transaction;
-2. export current dataset and store it in `localBackups` with `reason: 'pre-restore'`;
-3. start one `rw` transaction covering every replaceable user-data table;
-4. clear those tables;
-5. `bulkAdd` imported records preserving IDs;
-6. run final count/reference checks inside the same transaction;
-7. commit or throw so Dexie rolls back.
+The test passes `afterClear: () => { throw new Error('forced restore failure'); }`; production calls it with no hooks.
 
-`localBackups` is maintenance data and is not cleared by restore/reset.
+- [ ] **Step 5: Implement export and restore sequence**
 
-- [ ] **Step 6: Run backup tests**
+`exportBackup` reads all user/training tables in one read transaction and emits the type from Task 2. `restoreBackupData` must validate before mutation, store a pre-restore snapshot in `localBackups`, start one `rw` transaction across replaceable user tables, clear them, call `await hooks.afterClear?.()`, bulk-add imported rows preserving IDs, run final count/reference checks, then commit. `localBackups` is maintenance data and is not part of the replaceable dataset.
+
+`resetTrainingData` clears all replaceable user/training tables transactionally, keeps `localBackups` and schema intact, then creates one new `Local learner` profile.
+
+- [ ] **Step 6: Verify backup behavior**
 
 ```bash
 npm test -- src/persistence/backupSchema.test.ts src/persistence/backup.test.ts
@@ -673,45 +694,20 @@ git commit -m "feat: add safe versioned training data backup restore"
 
 ---
 
-### Task 6: Add UI-facing training-data service and summaries
+### Task 6: Add UI-facing training-data service and browser composition
 
 **Files:**
-- Create: `src/services/trainingDataService.ts`
-- Create: `src/services/trainingDataService.test.ts`
+- Create: `src/services/trainingDataService.ts`, `src/services/trainingDataService.test.ts`
 - Create: `src/persistence/browserRepository.ts`
 
 **Interfaces:**
-- Produces one browser singleton/factory used by React without exposing Dexie.
+- Produces `TrainingDataService`; React never receives a Dexie table/database object.
 
-- [ ] **Step 1: Write failing service tests**
+- [ ] **Step 1: Write failing service summary tests**
 
-Seed one learner, two repertoires, shared graph records, one attempt, and mastery. Assert `getSummary()` returns:
+Seed one learner, two repertoires, shared graph records, one attempt, and mastery. Assert `getSummary()` returns the exact `TrainingDataSummary` shape from Task 2, including two repertoire summaries, global counts, last activity, and schema version 2. On a fresh DB, `initialize()` must create exactly one learner and report zero repertoires/attempts.
 
-```ts
-{
-  learner: expect.objectContaining({ displayName: expect.any(String) }),
-  repertoires: expect.arrayContaining([
-    expect.objectContaining({ name: expect.any(String) }),
-  ]),
-  counts: {
-    repertoires: 2,
-    positions: expect.any(Number),
-    moveEdges: expect.any(Number),
-    positionMastery: 1,
-    repertoireMoveMastery: 1,
-    sessions: expect.any(Number),
-    attempts: 1,
-  },
-  lastActivityAt: expect.any(String),
-  schemaVersion: 2,
-}
-```
-
-Also verify a fresh database auto-creates exactly one local learner and zero repertoires.
-
-- [ ] **Step 2: Implement `TrainingDataService`**
-
-Expose:
+- [ ] **Step 2: Implement service**
 
 ```ts
 export class TrainingDataService {
@@ -720,23 +716,44 @@ export class TrainingDataService {
     private readonly admin: TrainingAdminRepository,
   ) {}
 
-  initialize(): Promise<TrainingDataSummary>;
-  refreshSummary(): Promise<TrainingDataSummary>;
-  exportBackup(): Promise<TrainingBackupV1>;
-  validateBackup(input: unknown): TrainingBackupV1;
-  restoreBackup(backup: TrainingBackupV1): Promise<TrainingDataSummary>;
-  getPreRestoreBackup(): Promise<TrainingBackupV1 | null>;
-  reset(): Promise<TrainingDataSummary>;
+  async initialize(): Promise<TrainingDataSummary> {
+    await this.training.ensureLocalLearner('Local learner');
+    return this.admin.getSummary();
+  }
+
+  refreshSummary(): Promise<TrainingDataSummary> {
+    return this.admin.getSummary();
+  }
+
+  exportBackup(): Promise<TrainingBackupV1> {
+    return this.admin.exportBackup();
+  }
+
+  validateBackup(input: unknown): TrainingBackupV1 {
+    return parseAndValidateBackup(input);
+  }
+
+  async restoreBackup(backup: TrainingBackupV1): Promise<TrainingDataSummary> {
+    await this.admin.restoreBackup(backup);
+    return this.admin.getSummary();
+  }
+
+  getPreRestoreBackup(): Promise<TrainingBackupV1 | null> {
+    return this.admin.getLatestPreRestoreBackup();
+  }
+
+  async reset(): Promise<TrainingDataSummary> {
+    await this.admin.resetTrainingData();
+    return this.admin.getSummary();
+  }
 }
 ```
 
-`initialize` calls `ensureLocalLearner('Local learner')` then returns summary.
+- [ ] **Step 3: Add browser composition factory**
 
-- [ ] **Step 3: Add browser repository factory**
+`browserRepository.ts` constructs one `ChessTrainingDatabase('chess-decision-trainer')`, one `DexieTrainingRepository`, and one `TrainingDataService`. Export `getBrowserTrainingDataService()` only; do not export the raw database.
 
-`src/persistence/browserRepository.ts` constructs one `ChessTrainingDatabase('chess-decision-trainer')`, one `DexieTrainingRepository`, and one `TrainingDataService`. Export a getter rather than the raw database object so UI code cannot call tables directly.
-
-- [ ] **Step 4: Verify service behavior**
+- [ ] **Step 4: Verify service**
 
 ```bash
 npm test -- src/services/trainingDataService.test.ts
@@ -757,67 +774,56 @@ git commit -m "feat: add training data admin service"
 ### Task 7: Add the minimal Training Data utility UI
 
 **Files:**
-- Create: `src/components/TrainingDataPanel.tsx`
-- Create: `src/components/TrainingDataPanel.test.tsx`
+- Create: `src/components/TrainingDataPanel.tsx`, `src/components/TrainingDataPanel.test.tsx`
 - Modify: `src/App.tsx`, `src/App.test.tsx`, `src/styles.css`
 
 **Interfaces:**
-- `TrainingDataPanel` accepts an injectable `service?: TrainingDataService` test seam; production uses the browser service getter.
+- `TrainingDataPanel` accepts `service?: TrainingDataService`; production defaults to `getBrowserTrainingDataService()`.
 
-- [ ] **Step 1: Write failing component tests**
+- [ ] **Step 1: Write failing component tests with a fake service**
 
-Required UI behaviors:
-- summary shows learner, repertoire list, counts, schema version, and last activity;
-- Export creates a JSON `Blob` and triggers a download filename beginning `chess-decision-trainer-backup-`;
-- invalid selected JSON shows a validation error and no restore confirmation;
+Required cases:
+- initialization renders learner, repertoire names/counts, global counts, schema version, and last activity;
+- Export creates JSON `Blob` and a filename beginning `chess-decision-trainer-backup-`;
+- invalid selected JSON shows validation failure and no replace action;
 - valid selected backup shows repertoire/position/attempt counts before replacement;
-- Restore button requires a second explicit confirmation before calling `restoreBackup`;
-- Reset requires explicit confirmation before calling `reset`;
-- successful restore refreshes visible counts;
-- if a pre-restore backup exists, `Download pre-restore backup` appears;
-- service failures render an understandable `role="alert"` message and do not crash the chess board.
+- restore requires explicit `Replace local data` confirmation;
+- reset requires explicit confirmation;
+- successful restore refreshes counts;
+- existing pre-restore backup exposes `Download pre-restore backup`;
+- service failure renders `role="alert"` and does not remove the chess board.
 
-Use a fake `TrainingDataService` object in UI tests; do not mock Dexie itself in component tests.
+Do not mock Dexie in component tests; use a fake `TrainingDataService` object.
 
-- [ ] **Step 2: Implement file parsing/download helpers inside the component module**
+- [ ] **Step 2: Implement JSON file/download helpers**
 
-Read selected files with `await file.text()` and `JSON.parse`. Generate exports with:
+Read selected files with `await file.text()` and `JSON.parse`. Downloads use:
 
 ```ts
 const blob = new Blob([JSON.stringify(backup, null, 2)], {
   type: 'application/json',
 });
 const url = URL.createObjectURL(blob);
+const link = document.createElement('a');
+link.href = url;
+link.download = filename;
+link.click();
+URL.revokeObjectURL(url);
 ```
 
-Create/click a temporary `<a download>` and revoke the URL immediately afterward.
+- [ ] **Step 3: Implement intentionally narrow utility panel**
 
-- [ ] **Step 3: Implement the Phase 2 utility surface**
+Render: `Training data` heading; active learner; repertoire list with position/move/attempt counts; global counts; last activity; schema version; Export backup; labeled restore file input; parsed backup summary; explicit replace confirmation; pre-restore backup download when available; explicit reset confirmation. Do not add repertoire authoring, opening drills, graph visualization, or mastery dashboard.
 
-Keep it deliberately small:
-- heading `Training data`;
-- active learner label;
-- repertoire names/counts;
-- stored totals;
-- schema version;
-- Export backup;
-- file input labeled `Restore backup`;
-- parsed backup summary;
-- explicit `Replace local data` confirmation control;
-- pre-restore backup download when present;
-- reset confirmation.
+- [ ] **Step 4: Integrate with `App` without touching chess truth**
 
-Do not add repertoire editing, opening practice, graphs, or mastery-dashboard visuals.
-
-- [ ] **Step 4: Integrate into `App` without coupling chess state to persistence**
-
-Render `<TrainingDataPanel />` beneath the existing game layout. Keep the existing `ChessGame`, clock, and telemetry state unchanged. Update the eyebrow copy to `Phase 2 · Local training data` while retaining all Phase 1 functionality.
+Render `<TrainingDataPanel />` beneath the existing game layout. Leave `ChessGame`, clock, move legality, and Phase 1 telemetry state unchanged. Update the eyebrow to `Phase 2 · Local training data`.
 
 - [ ] **Step 5: Add responsive styles**
 
-Reuse existing panel primitives. Ensure file inputs/buttons wrap cleanly at ~320px, long repertoire names wrap, and no backup status text creates horizontal page scrolling.
+Reuse existing panel styling. Ensure file inputs/buttons wrap at ~320px, long names/status text wrap, and no utility content causes page-level horizontal scrolling.
 
-- [ ] **Step 6: Run UI + existing regression suite**
+- [ ] **Step 6: Verify UI plus Phase 1 regressions**
 
 ```bash
 npm test -- src/components/TrainingDataPanel.test.tsx src/App.test.tsx
@@ -826,7 +832,7 @@ npm run typecheck
 npm run build
 ```
 
-Expected: all Phase 1 and Phase 2 tests PASS.
+Expected: PASS.
 
 - [ ] **Step 7: Commit**
 
@@ -837,31 +843,19 @@ git commit -m "feat: add local training data management ui"
 
 ---
 
-### Task 8: Add real-browser persistence smoke, CI coverage, documentation, and final verification
+### Task 8: Add real-browser persistence smoke, CI coverage, docs, and final verification
 
 **Files:**
 - Modify: `package.json`, `package-lock.json`
-- Create: `playwright.config.ts`
-- Create: `src/e2e/persistence.spec.ts`
-- Modify: `.github/workflows/ci.yml`
-- Modify: `README.md`
+- Create: `playwright.config.ts`, `src/e2e/persistence.spec.ts`
+- Modify: `.github/workflows/ci.yml`, `README.md`
 
 **Interfaces:**
-- Produces `npm run test:e2e` using system Chrome against Vite preview.
+- Produces `npm run test:e2e` against Vite preview using system Chrome.
 
 - [ ] **Step 1: Add Playwright script/config**
 
-Add:
-
-```json
-{
-  "scripts": {
-    "test:e2e": "playwright test"
-  }
-}
-```
-
-`playwright.config.ts`:
+Add `"test:e2e": "playwright test"` to scripts.
 
 ```ts
 import { defineConfig } from '@playwright/test';
@@ -883,11 +877,9 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 2: Write the browser persistence smoke**
+- [ ] **Step 2: Write the real-browser persistence smoke through public UI**
 
-Use the real UI restore flow rather than a hidden seed API. Construct a valid minimal backup in the test, upload it through the `Restore backup` file input, confirm replacement, assert the visible repertoire/position count, call `page.reload()`, and assert the same counts/repertoire name remain.
-
-Core assertions:
+Construct a valid backup containing one learner, one repertoire named `Persistence Smoke Repertoire`, one starting `Position`, and one `RepertoirePosition`. Upload through the visible restore input, confirm replacement, assert the repertoire and position count appear, reload the page, and assert they remain.
 
 ```ts
 await expect(page.getByText('Persistence Smoke Repertoire')).toBeVisible();
@@ -895,11 +887,11 @@ await page.reload();
 await expect(page.getByText('Persistence Smoke Repertoire')).toBeVisible();
 ```
 
-Also export after reload and assert the download is valid JSON with `format === 'chess-decision-trainer'` and `version === 1`.
+Then trigger Export backup, read the downloaded JSON, and assert `format === 'chess-decision-trainer'`, `version === 1`, and the repertoire is present.
 
-- [ ] **Step 3: Fix CI branch filter and add persistence smoke**
+- [ ] **Step 3: Fix CI trigger and add persistence smoke**
 
-Change workflow triggers from the stale Phase 1-only push branch to:
+Replace the stale Phase-1-only push branch filter with:
 
 ```yaml
 on:
@@ -910,25 +902,20 @@ on:
   pull_request:
 ```
 
-Keep `npm ci`, unit tests, typecheck, build, and existing screenshot smoke. Add after build:
+Keep `npm ci`, unit tests, typecheck, build, and existing desktop/mobile screenshot smoke. Add after build:
 
 ```yaml
 - name: Browser persistence smoke
   run: npm run test:e2e
 ```
 
-Do not run `playwright install`; config uses the already-available system `google-chrome` channel.
+Do not run `playwright install`; the config uses the system `google-chrome` already used by the workflow.
 
 - [ ] **Step 4: Update README**
 
-Document:
-- Phase 2 adds IndexedDB/Dexie local persistence, shared transposition-aware graph, multiple repertoires, layered mastery, attempt history, and backup/restore utilities;
-- local data remains browser-local and is not cloud-synced;
-- backup restore replaces current local training data after validation;
-- current verification commands include `npm run test:e2e`;
-- opening training UI, FSRS, Stockfish, accounts, and sync remain deferred.
+Document Phase 2 local persistence, shared transposition graph, multiple repertoires, layered mastery, attempt history, versioned backup/replace restore, browser-local/no-cloud limitation, and `npm run test:e2e`. Keep opening trainer, FSRS, Stockfish, accounts, sync, and merge conflict handling explicitly deferred.
 
-- [ ] **Step 5: Clean-install final verification**
+- [ ] **Step 5: Run clean-install verification**
 
 ```bash
 rm -rf node_modules dist
@@ -941,28 +928,15 @@ npm run test:e2e
 
 Expected: every command exits successfully with zero failed tests.
 
-- [ ] **Step 6: Run final acceptance audit against the spec**
+- [ ] **Step 6: Run final spec acceptance audit**
 
-Confirm explicitly:
-- ineffective en-passant identity fixed;
-- canonical transpositions deduplicate;
-- canonical move edges are legal and destination-consistent;
-- multiple repertoires share canonical graph records;
-- layered mastery is distinct;
-- attempt/mastery and graph writes are atomic;
-- schema upgrade preserves records;
-- browser reload preserves data;
-- export/restore round-trip works;
-- corrupt/unsupported/semantically invalid restore leaves data unchanged;
-- pre-restore backup exists after replacement;
-- reset preserves schema and recreates one learner;
-- UI contains no Phase 3 trainer/editor features.
+Confirm with evidence: ineffective en-passant key fixed; transpositions deduplicate; move edges are legal/destination-consistent; multiple repertoires share graph records; mastery layers remain distinct; attempt/mastery and graph writes are atomic; schema migration preserves records; real browser reload preserves data; backup export/restore round-trip works; invalid restore leaves data unchanged; pre-restore backup exists; reset preserves schema/recreates learner; no Phase 3 trainer/editor features were introduced.
 
-- [ ] **Step 7: Commit final verification/docs changes only after green evidence**
+- [ ] **Step 7: Commit final CI/docs work only after green evidence**
 
 ```bash
 git add package.json package-lock.json playwright.config.ts src/e2e/ .github/workflows/ci.yml README.md
 git commit -m "test: verify phase 2 local persistence"
 ```
 
-If verification exposes defects, fix them under the same red/green discipline before committing. Do not mark Phase 2 complete from code inspection alone.
+If verification exposes a defect, fix it under the same red/green discipline before committing. Do not mark Phase 2 complete from code inspection alone.
