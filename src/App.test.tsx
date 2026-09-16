@@ -103,3 +103,44 @@ test('rolls back a move attempted after the monotonic clock has expired', () => 
   expect(screen.getByText(/white.*time/i)).toBeInTheDocument();
   nowSpy.mockRestore();
 });
+
+test('exposes live FEN, training position key, PGN, and copy actions', async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText },
+  });
+  const user = userEvent.setup();
+  render(<App />);
+
+  const fen = screen.getByLabelText('FEN') as HTMLTextAreaElement;
+  const positionKey = screen.getByLabelText('Position key') as HTMLTextAreaElement;
+  const pgn = screen.getByLabelText('PGN') as HTMLTextAreaElement;
+
+  expect(fen.value).toBe('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+  expect(positionKey.value).toBe('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -');
+  expect(pgn.value).toBe('No moves yet.');
+  expect(screen.getByRole('button', { name: /copy pgn/i })).toBeDisabled();
+
+  await user.click(screen.getByRole('button', { name: /start game/i }));
+  await user.click(screen.getByRole('button', { name: 'drag e2-e4' }));
+  expect(pgn.value).toContain('1. e4');
+
+  await user.click(screen.getByRole('button', { name: /copy fen/i }));
+  expect(writeText).toHaveBeenLastCalledWith(fen.value);
+  await user.click(screen.getByRole('button', { name: /copy pgn/i }));
+  expect(writeText).toHaveBeenLastCalledWith(pgn.value);
+});
+
+test('reports a clipboard failure without breaking the game', async () => {
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+  });
+  const user = userEvent.setup();
+  render(<App />);
+
+  await user.click(screen.getByRole('button', { name: /copy fen/i }));
+  expect(await screen.findByText('Clipboard unavailable')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /chess decision trainer/i })).toBeInTheDocument();
+});
