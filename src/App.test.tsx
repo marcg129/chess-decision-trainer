@@ -105,12 +105,12 @@ test('rolls back a move attempted after the monotonic clock has expired', () => 
 });
 
 test('exposes live FEN, training position key, PGN, and copy actions', async () => {
+  const user = userEvent.setup();
   const writeText = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
     value: { writeText },
   });
-  const user = userEvent.setup();
   render(<App />);
 
   const fen = screen.getByLabelText('FEN') as HTMLTextAreaElement;
@@ -133,11 +133,11 @@ test('exposes live FEN, training position key, PGN, and copy actions', async () 
 });
 
 test('reports a clipboard failure without breaking the game', async () => {
+  const user = userEvent.setup();
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
     value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
   });
-  const user = userEvent.setup();
   render(<App />);
 
   await user.click(screen.getByRole('button', { name: /copy fen/i }));
