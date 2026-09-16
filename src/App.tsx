@@ -7,6 +7,7 @@ import {
 import type { Square } from 'chess.js';
 import { ChessClock } from './components/ChessClock';
 import { MoveList } from './components/MoveList';
+import { PositionDataPanel } from './components/PositionDataPanel';
 import {
   PromotionPicker,
   type PromotionPiece,
@@ -246,10 +247,21 @@ export default function App({ initialFen }: { initialFen?: string }) {
               New game
             </button>
           </div>
-          <section aria-labelledby="move-history-heading">
-            <h2 id="move-history-heading">Moves</h2>
+          <section className="panel-section" aria-labelledby="move-history-heading">
+            <div className="panel-heading-row">
+              <div>
+                <p className="panel-kicker">Decision telemetry</p>
+                <h2 id="move-history-heading">Moves</h2>
+              </div>
+              <span className="data-badge">{records.length}</span>
+            </div>
             <MoveList records={records} />
           </section>
+          <PositionDataPanel
+            fen={snapshot.fen}
+            positionKey={snapshot.positionKey}
+            pgn={snapshot.pgn}
+          />
         </aside>
       </section>
 
