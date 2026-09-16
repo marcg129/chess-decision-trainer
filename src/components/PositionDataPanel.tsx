@@ -4,11 +4,17 @@ type PositionDataPanelProps = {
   fen: string;
   positionKey: string;
   pgn: string;
+  hasMoves: boolean;
 };
 
-export function PositionDataPanel({ fen, positionKey, pgn }: PositionDataPanelProps) {
+export function PositionDataPanel({
+  fen,
+  positionKey,
+  pgn,
+  hasMoves,
+}: PositionDataPanelProps) {
   const [copyStatus, setCopyStatus] = useState('');
-  const pgnValue = pgn.trim() === '' ? 'No moves yet.' : pgn;
+  const pgnValue = hasMoves ? pgn : 'No moves yet.';
 
   const copyText = async (label: string, value: string) => {
     try {
@@ -58,7 +64,7 @@ export function PositionDataPanel({ fen, positionKey, pgn }: PositionDataPanelPr
           <button
             type="button"
             onClick={() => copyText('PGN', pgn)}
-            disabled={pgn.trim() === ''}
+            disabled={!hasMoves}
           >
             Copy PGN
           </button>

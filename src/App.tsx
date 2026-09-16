@@ -261,6 +261,7 @@ export default function App({ initialFen }: { initialFen?: string }) {
             fen={snapshot.fen}
             positionKey={snapshot.positionKey}
             pgn={snapshot.pgn}
+            hasMoves={snapshot.history.length > 0}
           />
         </aside>
       </section>
