@@ -51,6 +51,19 @@ export function OpeningTrainer({
 
   useEffect(() => {
     let active = true;
+    let startedEngine: OpeningTrainingEngine | null = null;
+    let stopStarted = false;
+
+    const stopStartedEngine = async (target: OpeningTrainingEngine) => {
+      if (stopStarted) return;
+      stopStarted = true;
+      try {
+        await target.stop();
+      } catch {
+        // Cleanup cannot safely surface an error after the trainer has unmounted.
+      }
+    };
+
     setEngine(null);
     setState(null);
     setSelectedSquare(null);
@@ -60,7 +73,11 @@ export function OpeningTrainer({
     void (async () => {
       try {
         const started = await client.startSession({ repertoireId, mode });
-        if (!active) return;
+        startedEngine = started;
+        if (!active) {
+          await stopStartedEngine(started);
+          return;
+        }
         setEngine(started);
         setState(started.state());
       } catch (caught) {
@@ -70,6 +87,7 @@ export function OpeningTrainer({
 
     return () => {
       active = false;
+      if (startedEngine) void stopStartedEngine(startedEngine);
     };
   }, [client, repertoireId, mode]);
 
