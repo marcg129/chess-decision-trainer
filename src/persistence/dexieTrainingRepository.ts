@@ -1,5 +1,13 @@
 import { InvalidChessEdgeError } from '../training/errors';
 import { deriveTransition } from '../training/graph';
+import {
+  nextPositionMastery,
+  nextRepertoireMoveMastery,
+} from '../training/mastery';
+import type {
+  RecordAttemptInput,
+  RepertoireTransitionInput,
+} from '../training/repositories';
 import type {
   EntityId,
   LearnerProfile,
@@ -10,12 +18,16 @@ import type {
   RepertoireMove,
   RepertoireMoveMastery,
   RepertoirePosition,
+  TrainingAttempt,
   TrainingSession,
 } from '../training/types';
 import { createId } from '../training/types';
-import type { RepertoireTransitionInput } from '../training/repositories';
-import { StorageQuotaError, StorageUnavailableError, TransactionError } from './errors';
 import { ChessTrainingDatabase } from './db';
+import {
+  StorageQuotaError,
+  StorageUnavailableError,
+  TransactionError,
+} from './errors';
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -31,7 +43,11 @@ function sideToMoveFromFen(fen: string): 'w' | 'b' {
 
 function translatePersistenceError(error: unknown): never {
   if (error instanceof InvalidChessEdgeError) throw error;
-  if (error instanceof StorageQuotaError || error instanceof StorageUnavailableError || error instanceof TransactionError) {
+  if (
+    error instanceof StorageQuotaError ||
+    error instanceof StorageUnavailableError ||
+    error instanceof TransactionError
+  ) {
     throw error;
   }
   if (error instanceof Error && error.name === 'QuotaExceededError') {
@@ -40,7 +56,9 @@ function translatePersistenceError(error: unknown): never {
   if (error instanceof Error && error.name === 'MissingAPIError') {
     throw new StorageUnavailableError(error.message);
   }
-  throw new TransactionError(error instanceof Error ? error.message : 'Training data transaction failed.');
+  throw new TransactionError(
+    error instanceof Error ? error.message : 'Training data transaction failed.',
+  );
 }
 
 export class DexieTrainingRepository {
@@ -121,6 +139,138 @@ export class DexieTrainingRepository {
         throw new TransactionError('Training session references a missing repertoire.');
       }
       await this.db.trainingSessions.add(session);
+    } catch (error) {
+      translatePersistenceError(error);
+    }
+  }
+
+  async recordAttempt(input: RecordAttemptInput): Promise<TrainingAttempt> {
+    if (!Number.isFinite(input.decisionTimeMs) || input.decisionTimeMs < 0) {
+      throw new TransactionError('Decision time must be a non-negative finite number.');
+    }
+    if (!Number.isInteger(input.hintCount) || input.hintCount < 0) {
+      throw new TransactionError('Hint count must be a non-negative integer.');
+    }
+
+    try {
+      return await this.db.transaction(
+        'rw',
+        this.db.trainingAttempts,
+        this.db.positionMastery,
+        this.db.repertoireMoveMastery,
+        this.db.trainingSessions,
+        this.db.repertoires,
+        this.db.positions,
+        this.db.repertoireMoves,
+        this.db.moveEdges,
+        async () => {
+          const repertoire = await this.db.repertoires.get(input.repertoireId);
+          if (!repertoire) {
+            throw new TransactionError('Attempt references a missing repertoire.');
+          }
+
+          const position = await this.db.positions.get(input.positionId);
+          if (!position) {
+            throw new TransactionError('Attempt references a missing position.');
+          }
+
+          if (input.sessionId) {
+            const session = await this.db.trainingSessions.get(input.sessionId);
+            if (!session) {
+              throw new TransactionError('Attempt references a missing training session.');
+            }
+            if (session.repertoireId && session.repertoireId !== input.repertoireId) {
+              throw new TransactionError(
+                'Training session belongs to a different repertoire.',
+              );
+            }
+          }
+
+          const currentPositionMastery = await this.db.positionMastery
+            .where('positionId')
+            .equals(input.positionId)
+            .first();
+          const currentRepertoireMoveMastery = input.repertoireMoveId
+            ? await this.db.repertoireMoveMastery
+                .where('repertoireMoveId')
+                .equals(input.repertoireMoveId)
+                .first()
+            : undefined;
+
+          const outcome = {
+            correct: input.correct,
+            decisionTimeMs: input.decisionTimeMs,
+          };
+          const nextPosition = nextPositionMastery(
+            currentPositionMastery,
+            input.positionId,
+            outcome,
+            input.timestamp,
+          );
+          const nextRepertoireMove = input.repertoireMoveId
+            ? nextRepertoireMoveMastery(
+                currentRepertoireMoveMastery,
+                input.repertoireMoveId,
+                outcome,
+                input.timestamp,
+              )
+            : undefined;
+
+          const masteryBefore = {
+            positionState: currentPositionMastery?.state ?? 'new' as const,
+            positionScore: currentPositionMastery?.score ?? 0,
+            ...(input.repertoireMoveId
+              ? {
+                  repertoireMoveState:
+                    currentRepertoireMoveMastery?.state ?? 'new' as const,
+                  repertoireMoveScore: currentRepertoireMoveMastery?.score ?? 0,
+                }
+              : {}),
+          };
+          const masteryAfter = {
+            positionState: nextPosition.state,
+            positionScore: nextPosition.score,
+            ...(nextRepertoireMove
+              ? {
+                  repertoireMoveState: nextRepertoireMove.state,
+                  repertoireMoveScore: nextRepertoireMove.score,
+                }
+              : {}),
+          };
+
+          const attempt: TrainingAttempt = {
+            ...input,
+            id: createId(),
+            masteryBefore,
+            masteryAfter,
+          };
+
+          await this.db.trainingAttempts.add(attempt);
+
+          if (input.repertoireMoveId) {
+            const repertoireMove = await this.db.repertoireMoves.get(input.repertoireMoveId);
+            if (!repertoireMove) {
+              throw new TransactionError('Attempt references a missing repertoire move.');
+            }
+            if (repertoireMove.repertoireId !== input.repertoireId) {
+              throw new TransactionError('Repertoire move belongs to a different repertoire.');
+            }
+            const moveEdge = await this.db.moveEdges.get(repertoireMove.moveEdgeId);
+            if (!moveEdge || moveEdge.fromPositionId !== input.positionId) {
+              throw new TransactionError(
+                'Repertoire move does not originate from the attempted position.',
+              );
+            }
+          }
+
+          await this.db.positionMastery.put(nextPosition);
+          if (nextRepertoireMove) {
+            await this.db.repertoireMoveMastery.put(nextRepertoireMove);
+          }
+
+          return attempt;
+        },
+      );
     } catch (error) {
       translatePersistenceError(error);
     }
