@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Chess } from 'chess.js';
 import { parsePgnSource } from '../pgn/parsePgn';
 import { buildRepertoireImportPlan } from './buildImportPlan';
 
@@ -32,7 +33,13 @@ describe('buildRepertoireImportPlan', () => {
     const plan = buildRepertoireImportPlan(doc, {
       name: 'Variation preference', side: 'white', selectedGameIndexes: [0],
     });
-    const c5Response = plan.transitions.find((item) => item.move.from === 'g1' && item.move.to === 'f3' && item.fromFen.includes(' c5 '));
+    const variation = new Chess();
+    variation.move('e4');
+    variation.move('c5');
+    const variationFen = variation.fen();
+    const c5Response = plan.transitions.find(
+      (item) => item.move.from === 'g1' && item.move.to === 'f3' && item.fromFen === variationFen,
+    );
     expect(c5Response).toMatchObject({ role: 'learner', preferred: true, trainable: true });
   });
 
