@@ -1,0 +1,241 @@
+.opening-home,
+.pgn-import,
+.opening-trainer {
+  display: grid;
+  gap: 1rem;
+  width: min(100%, 920px);
+  margin-inline: auto;
+  padding: 1rem;
+  border: 1px solid #393c36;
+  border-radius: 10px;
+  background: #242622;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.opening-home__header,
+.pgn-import__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.opening-home__header h2,
+.pgn-import__header h2,
+.pgn-import__preview h3 {
+  margin: 0;
+}
+
+.opening-home__header p:not(.panel-kicker) {
+  margin: 0.35rem 0 0;
+  color: #aeb4aa;
+  line-height: 1.45;
+}
+
+.opening-home__repertoires {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.65rem;
+}
+
+.opening-home__repertoire {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: 0.8rem;
+  border: 1px solid #3b3f38;
+  border-radius: 8px;
+  background: #2a2c28;
+  cursor: pointer;
+}
+
+.opening-home__repertoire.is-selected {
+  border-color: #738c68;
+  box-shadow: inset 3px 0 0 #83a374;
+}
+
+.opening-home__repertoire span {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.opening-home__repertoire strong {
+  overflow-wrap: anywhere;
+}
+
+.opening-home__repertoire small {
+  color: #9caa94;
+}
+
+.opening-home__actions,
+.pgn-import__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.opening-home__primary,
+.pgn-import__preview .pgn-import__actions button:last-child {
+  border-color: #6e8964;
+  background: #40533a;
+}
+
+.opening-home__empty,
+.pgn-import__preview {
+  padding: 0.85rem;
+  border: 1px solid #3b3f38;
+  border-radius: 8px;
+  background: #292b27;
+}
+
+.opening-home__empty p {
+  margin: 0;
+  color: #b9beb5;
+}
+
+.opening-training__alert,
+.pgn-import__warnings {
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #835a50;
+  border-radius: 7px;
+  color: #f0d1c9;
+  background: #3c2d29;
+}
+
+.pgn-import__file,
+.pgn-import__settings {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.pgn-import__file > label,
+.pgn-import__settings > label,
+.pgn-import legend {
+  color: #d9ddd5;
+  font-size: 0.78rem;
+  font-weight: 760;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pgn-import input[type='text'],
+.pgn-import input:not([type]) {
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid #43473f;
+  border-radius: 7px;
+  padding: 0.66rem 0.75rem;
+  color: #f4f4f2;
+  background: #1d1f1c;
+  font: inherit;
+}
+
+.pgn-import input:focus-visible {
+  outline: 3px solid rgba(150, 184, 126, 0.55);
+  outline-offset: 2px;
+}
+
+.pgn-import__games,
+.pgn-import__settings fieldset {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid #3b3f38;
+  border-radius: 8px;
+}
+
+.pgn-import__games label,
+.pgn-import__settings fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.45rem 0.5rem;
+  border-radius: 6px;
+  background: #2c2f2a;
+}
+
+.pgn-import__games span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pgn-import__preview {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.pgn-import__counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.pgn-import__counts span {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.65rem;
+  border-radius: 7px;
+  color: #aeb4aa;
+  background: #20221f;
+  text-align: center;
+}
+
+.pgn-import__counts strong {
+  color: #f4f4f2;
+  font-size: 1.15rem;
+}
+
+.pgn-import__warnings {
+  border-color: #71613e;
+  color: #eadcaf;
+  background: #373226;
+}
+
+.pgn-import__warnings p {
+  margin: 0;
+}
+
+.pgn-import__warnings p + p {
+  margin-top: 0.45rem;
+}
+
+@media (max-width: 640px) {
+  .opening-home,
+  .pgn-import,
+  .opening-trainer {
+    width: 100%;
+    padding: 0.75rem;
+  }
+
+  .opening-home__header,
+  .pgn-import__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .opening-home__repertoires,
+  .pgn-import__counts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .opening-home__actions,
+  .pgn-import__actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .opening-home__actions button,
+  .pgn-import__actions button,
+  .opening-home__header button,
+  .pgn-import__header button,
+  .pgn-import input {
+    max-width: 100%;
+    width: 100%;
+  }
+}
