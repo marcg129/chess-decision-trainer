@@ -10,6 +10,8 @@ const IMPORT_PGN = `[Event "E2E A"]
 
 1. e4 c5 2. Nf3 d6 *`;
 
+const BOARD = '#opening-training-board-board';
+
 async function expectNoHorizontalOverflow(page: Page) {
   const overflow = await page.evaluate(() =>
     Math.max(document.documentElement.scrollWidth, document.body.scrollWidth)
@@ -43,20 +45,9 @@ async function importWhiteRepertoire(page: Page) {
 }
 
 async function clickSquare(page: Page, square: string) {
-  const board = page.locator('#opening-training-board');
+  const board = page.locator(BOARD);
   await expect(board).toBeVisible();
-  const box = await board.boundingBox();
-  if (!box) throw new Error('Opening training board has no bounding box.');
-
-  const file = square.charCodeAt(0) - 'a'.charCodeAt(0);
-  const rank = Number(square[1]);
-  const squareSize = box.width / 8;
-  await board.click({
-    position: {
-      x: (file + 0.5) * squareSize,
-      y: (8 - rank + 0.5) * squareSize,
-    },
-  });
+  await page.locator(`#opening-training-board-square-${square}`).click();
 }
 
 test('imports a multi-game PGN, persists it, records a Practice Line attempt, and retains it after reload', async ({ page }) => {
@@ -89,7 +80,7 @@ test('launches Quick Recall from the built-in demo without depending on random p
   await page.goto('/');
   await page.getByRole('button', { name: 'Try Demo' }).click();
   await expect(page.getByText('Practice Line')).toBeVisible();
-  await expect(page.locator('#opening-training-board')).toBeVisible();
+  await expect(page.locator(BOARD)).toBeVisible();
 
   await page.getByRole('button', { name: 'Exit session' }).click();
   await expect(page.getByRole('heading', { name: 'Opening training' })).toBeVisible();
@@ -97,7 +88,7 @@ test('launches Quick Recall from the built-in demo without depending on random p
 
   await expect(page.getByText('Quick Recall')).toBeVisible();
   await expect(page.getByLabel('Session progress')).toBeVisible();
-  await expect(page.locator('#opening-training-board')).toBeVisible();
+  await expect(page.locator(BOARD)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Hint' })).toBeEnabled();
 });
 
@@ -113,6 +104,6 @@ test('keeps Train, import, and trainer surfaces within a 320px viewport', async 
 
   await page.getByRole('button', { name: 'Cancel' }).click();
   await page.getByRole('button', { name: 'Try Demo' }).click();
-  await expect(page.locator('#opening-training-board')).toBeVisible();
+  await expect(page.locator(BOARD)).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });
