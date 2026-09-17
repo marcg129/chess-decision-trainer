@@ -49,18 +49,7 @@ function fakeService(overrides: Partial<TrainingDataService> = {}): TrainingData
   } as unknown as TrainingDataService;
 }
 
-test('renders learner, repertoire, counts, activity, and schema version', async () => {
-  render(<TrainingDataPanel service={fakeService()} />);
-
-  expect(await screen.findByRole('heading', { name: /training data/i })).toBeInTheDocument();
-  expect(screen.getByText('Local learner')).toBeInTheDocument();
-  expect(screen.getByText('White repertoire')).toBeInTheDocument();
-  expect(screen.getByText(/12 positions/i)).toBeInTheDocument();
-  expect(screen.getByText(/schema 2/i)).toBeInTheDocument();
-});
-
-test('exports a versioned JSON backup with a stable filename prefix', async () => {
-  const service = fakeService();
+function installDownloadSpies() {
   const createObjectURL = vi.fn(() => 'blob:test');
   const revokeObjectURL = vi.fn();
   Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
@@ -69,15 +58,39 @@ test('exports a versioned JSON backup with a stable filename prefix', async () =
   vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function () {
     filename = this.download;
   });
+  return {
+    createObjectURL,
+    revokeObjectURL,
+    get filename() {
+      return filename;
+    },
+  };
+}
+
+test('renders learner, repertoire, global counts, activity, and schema version', async () => {
+  render(<TrainingDataPanel service={fakeService()} />);
+
+  expect(await screen.findByRole('heading', { name: /training data/i })).toBeInTheDocument();
+  expect(screen.getByText('Local learner')).toBeInTheDocument();
+  expect(screen.getByText('White repertoire')).toBeInTheDocument();
+  expect(screen.getAllByText(/\b12 positions\b/i)).toHaveLength(2);
+  expect(screen.getByText(/4 attempts · 2 sessions/i)).toBeInTheDocument();
+  expect(screen.getByText('2026-09-17T01:02:03.000Z')).toBeInTheDocument();
+  expect(screen.getByText(/schema 2/i)).toBeInTheDocument();
+});
+
+test('exports a versioned JSON backup with a stable filename prefix', async () => {
+  const service = fakeService();
+  const download = installDownloadSpies();
 
   render(<TrainingDataPanel service={service} />);
   await screen.findByText('White repertoire');
   await userEvent.click(screen.getByRole('button', { name: /export backup/i }));
 
   expect(service.exportBackup).toHaveBeenCalledOnce();
-  expect(createObjectURL).toHaveBeenCalledOnce();
-  expect(filename).toMatch(/^chess-decision-trainer-backup-/);
-  expect(revokeObjectURL).toHaveBeenCalledOnce();
+  expect(download.createObjectURL).toHaveBeenCalledOnce();
+  expect(download.filename).toMatch(/^chess-decision-trainer-backup-/);
+  expect(download.revokeObjectURL).toHaveBeenCalledOnce();
 });
 
 test('invalid selected backup shows an alert and no replace action', async () => {
@@ -98,11 +111,21 @@ test('invalid selected backup shows an alert and no replace action', async () =>
   expect(screen.queryByRole('button', { name: /replace local data/i })).not.toBeInTheDocument();
 });
 
-test('valid restore shows counts and requires explicit replacement confirmation', async () => {
+test('valid restore shows backup counts, requires confirmation, and refreshes summary', async () => {
   const backup = makeValidBackup('Imported repertoire');
-  const restored = {
+  const restored: TrainingDataSummary = {
     ...summary,
-    repertoires: [{ ...summary.repertoires[0], name: 'Imported repertoire' }],
+    counts: {
+      ...summary.counts,
+      positions: 2,
+    },
+    repertoires: [
+      {
+        ...summary.repertoires[0],
+        name: 'Imported repertoire',
+        positions: 2,
+      },
+    ],
   };
   const service = fakeService({
     validateBackup: vi.fn(() => backup),
@@ -118,13 +141,32 @@ test('valid restore shows counts and requires explicit replacement confirmation'
     target: { files: [file] },
   });
 
-  expect(await screen.findByText(/1 repertoire/i)).toBeInTheDocument();
-  expect(screen.getByText(/2 positions/i)).toBeInTheDocument();
+  expect(
+    await screen.findByText(/valid backup: 1 repertoires · 2 positions/i),
+  ).toBeInTheDocument();
   expect(service.restoreBackup).not.toHaveBeenCalled();
 
   await userEvent.click(screen.getByRole('button', { name: /replace local data/i }));
   expect(service.restoreBackup).toHaveBeenCalledWith(backup);
   expect(await screen.findByText('Imported repertoire')).toBeInTheDocument();
+  expect(screen.getByText(/1 repertoires · 2 positions · 9 moves/i)).toBeInTheDocument();
+});
+
+test('existing pre-restore backup exposes a recovery download', async () => {
+  const recovery = makeValidBackup('Recovery repertoire');
+  const download = installDownloadSpies();
+  const service = fakeService({
+    getPreRestoreBackup: vi.fn().mockResolvedValue(recovery),
+  });
+
+  render(<TrainingDataPanel service={service} />);
+  const button = await screen.findByRole('button', {
+    name: /download pre-restore backup/i,
+  });
+  await userEvent.click(button);
+
+  expect(download.filename).toMatch(/^chess-decision-trainer-pre-restore-/);
+  expect(download.revokeObjectURL).toHaveBeenCalledOnce();
 });
 
 test('reset requires a second explicit confirmation', async () => {
