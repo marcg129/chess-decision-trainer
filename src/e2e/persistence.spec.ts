@@ -91,3 +91,20 @@ test('restored training data survives reload and exports through the public UI',
   expect(exported.version).toBe(1);
   expect(exported.data.repertoires.some((item) => item.name === 'Persistence Smoke Repertoire')).toBe(true);
 });
+
+test('training data utilities fit a 320px viewport without horizontal overflow', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto('/');
+
+  const heading = page.getByRole('heading', { name: 'Training data' });
+  await heading.scrollIntoViewIfNeeded();
+  await expect(heading).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Export backup' })).toBeVisible();
+  await expect(page.getByLabel('Restore backup file')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reset local data' })).toBeVisible();
+
+  const overflow = await page.evaluate(() =>
+    Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+});
