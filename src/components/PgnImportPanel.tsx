@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import '../openingTraining.css';
 import type { ImportSide, RepertoireImportPlan } from '../openings/import/types';
 import type { ParsedPgnDocument, ParsedPgnGame } from '../openings/pgn/types';
 import { getBrowserOpeningTrainingService } from '../persistence/browserRepository';
