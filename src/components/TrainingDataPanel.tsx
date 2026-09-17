@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { getBrowserTrainingDataService } from '../persistence/browserRepository';
 import type { TrainingDataService } from '../services/trainingDataService';
 import type { TrainingBackupV1, TrainingDataSummary } from '../training/types';
+import { readFileText } from '../utils/readFileText';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Training data operation failed.';
@@ -13,17 +14,6 @@ function backupCounts(backup: TrainingBackupV1) {
     positions: backup.data.positions.length,
     attempts: backup.data.trainingAttempts.length,
   };
-}
-
-async function readFileText(file: File): Promise<string> {
-  if (typeof file.text === 'function') return file.text();
-
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
-    reader.onerror = () => reject(reader.error ?? new Error('Unable to read backup file.'));
-    reader.readAsText(file);
-  });
 }
 
 function downloadBackup(backup: TrainingBackupV1, prefix: string): void {
