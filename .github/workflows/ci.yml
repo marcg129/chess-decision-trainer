@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ['feature/phase-1-chess-core']
+    branches:
+      - main
+      - 'feature/**'
   pull_request:
 
 permissions:
@@ -25,6 +27,8 @@ jobs:
         run: npm run typecheck
       - name: Build
         run: npm run build
+      - name: Browser persistence smoke
+        run: npm run test:e2e
       - name: Browser smoke
         run: |
           npm exec -- vite preview --host 127.0.0.1 > /tmp/vite-preview.log 2>&1 &
