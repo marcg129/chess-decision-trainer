@@ -3,6 +3,8 @@ import { buildRepertoireImportPlan } from '../openings/import/buildImportPlan';
 import type { ImportSide, RepertoireImportPlan } from '../openings/import/types';
 import { parsePgnSource } from '../openings/pgn/parsePgn';
 import type { ParsedPgnDocument } from '../openings/pgn/types';
+import { OpeningTrainingEngine } from '../openings/training/engine';
+import type { OpeningTrainingMode } from '../openings/training/types';
 import type {
   RepertoireTrainingSnapshot,
   TrainingRepository,
@@ -91,5 +93,21 @@ export class OpeningTrainingService {
 
   loadRepertoire(repertoireId: EntityId): Promise<RepertoireTrainingSnapshot> {
     return this.training.loadRepertoireTrainingSnapshot(repertoireId);
+  }
+
+  async startSession(input: {
+    repertoireId: EntityId;
+    mode: OpeningTrainingMode;
+    now?: () => number;
+    random?: () => number;
+  }): Promise<OpeningTrainingEngine> {
+    const snapshot = await this.loadRepertoire(input.repertoireId);
+    return OpeningTrainingEngine.start({
+      snapshot,
+      repository: this.training,
+      mode: input.mode,
+      ...(input.now ? { now: input.now } : {}),
+      ...(input.random ? { random: input.random } : {}),
+    });
   }
 }
