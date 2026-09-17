@@ -98,6 +98,7 @@ export class OpeningTrainingEngine {
   private firstDecisionTimeMs?: number;
   private wrongLegalMoves = 0;
   private pendingPersistence?: PendingPersistence;
+  private persistenceInFlight = false;
   private remainingQuickRecallPositionIds: EntityId[] = [];
 
   private constructor(options: OpeningTrainingEngineOptions) {
@@ -149,6 +150,7 @@ export class OpeningTrainingEngine {
   }
 
   requestHint(): OpeningTrainingState {
+    if (this.persistenceInFlight) return this.state();
     if (this.complete || this.phase === 'resolved-not-persisted') return this.state();
     if (!['awaiting-move', 'retry', 'revealed'].includes(this.phase)) return this.state();
 
@@ -167,6 +169,7 @@ export class OpeningTrainingEngine {
   }
 
   async submitMove(move: TrainingMoveInput): Promise<OpeningTrainingState> {
+    if (this.persistenceInFlight) return this.state();
     if (this.complete || this.phase === 'resolved-not-persisted') return this.state();
     if (!['awaiting-move', 'retry', 'revealed'].includes(this.phase)) return this.state();
 
@@ -251,13 +254,16 @@ export class OpeningTrainingEngine {
       acceptedChoice,
       feedback,
     };
+    this.persistenceInFlight = true;
     return this.persistPending();
   }
 
   async retryPersistence(): Promise<OpeningTrainingState> {
+    if (this.persistenceInFlight) return this.state();
     if (this.phase !== 'resolved-not-persisted' || !this.pendingPersistence) {
       return this.state();
     }
+    this.persistenceInFlight = true;
     return this.persistPending();
   }
 
@@ -398,40 +404,47 @@ export class OpeningTrainingEngine {
 
   private async persistPending(): Promise<OpeningTrainingState> {
     const pending = this.pendingPersistence;
-    if (!pending) return this.state();
+    if (!pending) {
+      this.persistenceInFlight = false;
+      return this.state();
+    }
 
     try {
-      await this.repository.recordAttempt(pending.input);
-    } catch {
-      this.phase = 'resolved-not-persisted';
-      this.feedback = pending.feedback;
-      return this.state();
-    }
-
-    this.pendingPersistence = undefined;
-    this.progress = {
-      ...this.progress,
-      completed: this.progress.completed + 1,
-    };
-
-    if (this.mode === 'quick-recall') {
-      if (
-        this.progress.total !== null
-        && this.progress.completed >= this.progress.total
-      ) {
-        this.currentPosition = pending.acceptedChoice.toPosition;
+      try {
+        await this.repository.recordAttempt(pending.input);
+      } catch {
+        this.phase = 'resolved-not-persisted';
         this.feedback = pending.feedback;
-        await this.finishSession();
-      } else {
-        this.feedback = pending.feedback;
-        this.selectNextQuickRecall(true);
+        return this.state();
       }
-      return this.state();
-    }
 
-    this.feedback = pending.feedback;
-    await this.advancePracticeFrom(pending.acceptedChoice.toPosition, true);
-    return this.state();
+      this.pendingPersistence = undefined;
+      this.progress = {
+        ...this.progress,
+        completed: this.progress.completed + 1,
+      };
+
+      if (this.mode === 'quick-recall') {
+        if (
+          this.progress.total !== null
+          && this.progress.completed >= this.progress.total
+        ) {
+          this.currentPosition = pending.acceptedChoice.toPosition;
+          this.feedback = pending.feedback;
+          await this.finishSession();
+        } else {
+          this.feedback = pending.feedback;
+          this.selectNextQuickRecall(true);
+        }
+        return this.state();
+      }
+
+      this.feedback = pending.feedback;
+      await this.advancePracticeFrom(pending.acceptedChoice.toPosition, true);
+      return this.state();
+    } finally {
+      this.persistenceInFlight = false;
+    }
   }
 
   private selectNextQuickRecall(preserveFeedback: boolean): void {
