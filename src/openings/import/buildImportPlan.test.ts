@@ -23,6 +23,19 @@ describe('buildRepertoireImportPlan', () => {
     expect(plan.transitions.some((item) => item.fromFen.includes(' b ') && item.move.to === 'c5')).toBe(true);
   });
 
+  it('marks the local main learner continuation inside an opponent variation as preferred', () => {
+    const doc = parsePgnSource(`
+[Event "Variation"]
+[Result "*"]
+1. e4 e5 (1... c5 2. Nf3 d6) 2. Nf3 *
+`);
+    const plan = buildRepertoireImportPlan(doc, {
+      name: 'Variation preference', side: 'white', selectedGameIndexes: [0],
+    });
+    const c5Response = plan.transitions.find((item) => item.move.from === 'g1' && item.move.to === 'f3' && item.fromFen.includes(' c5 '));
+    expect(c5Response).toMatchObject({ role: 'learner', preferred: true, trainable: true });
+  });
+
   it('keeps exactly one preferred learner move and warns on conflicting main lines', () => {
     const doc = parsePgnSource(`
 [Event "First"]
