@@ -1,3 +1,41 @@
+.app-nav {
+  width: min(100%, 1120px);
+  margin-inline: auto;
+}
+
+.app-nav__tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+  padding: 0.35rem;
+  border: 1px solid #393c36;
+  border-radius: 10px;
+  background: #20221f;
+}
+
+.app-nav__tabs button {
+  min-width: 0;
+  border-color: transparent;
+  background: transparent;
+  color: #aeb4aa;
+}
+
+.app-nav__tabs button.is-active {
+  border-color: #5f7756;
+  background: #354330;
+  color: #f4f4f2;
+}
+
+.app-section,
+.play-surface {
+  min-width: 0;
+}
+
+.play-surface {
+  display: grid;
+  gap: 0.8rem;
+}
+
 .opening-home,
 .pgn-import,
 .opening-trainer {
