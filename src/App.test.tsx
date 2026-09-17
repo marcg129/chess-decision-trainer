@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
+import type { OpeningTrainingService } from './services/openingTrainingService';
 import type { TrainingDataService } from './services/trainingDataService';
 import type { TrainingDataSummary } from './training/types';
 
@@ -78,15 +79,27 @@ function fakeTrainingDataService(
   } as unknown as TrainingDataService;
 }
 
+function fakeOpeningTrainingService(): OpeningTrainingService {
+  return {
+    listRepertoires: vi.fn().mockResolvedValue([]),
+  } as unknown as OpeningTrainingService;
+}
+
 function renderApp({
   initialFen,
   trainingDataService = fakeTrainingDataService(),
+  openingTrainingService,
 }: {
   initialFen?: string;
   trainingDataService?: TrainingDataService;
+  openingTrainingService?: OpeningTrainingService;
 } = {}) {
   return render(
-    <App initialFen={initialFen} trainingDataService={trainingDataService} />,
+    <App
+      initialFen={initialFen}
+      trainingDataService={trainingDataService}
+      openingTrainingService={openingTrainingService}
+    />,
   );
 }
 
@@ -209,4 +222,20 @@ test('keeps the chess board available when local training storage initialization
   expect(screen.getByTestId('board')).toBeInTheDocument();
   expect(await screen.findByRole('alert')).toHaveTextContent(/storage unavailable/i);
   expect(screen.getByText(/phase 2 · local training data/i)).toBeInTheDocument();
+});
+
+test('opens on Train and preserves the Play and Data surfaces', async () => {
+  const user = userEvent.setup();
+  renderApp({
+    openingTrainingService: fakeOpeningTrainingService(),
+    trainingDataService: fakeTrainingDataService({
+      initialize: vi.fn().mockResolvedValue(trainingSummary),
+    }),
+  });
+
+  expect(screen.getByRole('tab', { name: 'Train' })).toHaveAttribute('aria-selected', 'true');
+  await user.click(screen.getByRole('tab', { name: 'Play' }));
+  expect(screen.getByLabelText('Chess game')).toBeInTheDocument();
+  await user.click(screen.getByRole('tab', { name: 'Data' }));
+  expect(await screen.findByRole('heading', { name: 'Training data' })).toBeInTheDocument();
 });
