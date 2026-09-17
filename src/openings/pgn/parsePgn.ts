@@ -1,4 +1,5 @@
-import parse, {
+import {
+  parse,
   type Notation,
   type NotationList,
   type ParseError,
