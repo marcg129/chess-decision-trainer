@@ -24,16 +24,27 @@ export function deriveTransition(
     const fromPositionKey = positionKeyFromFen(fromFen);
     const move = chess.move(moveInput);
     const toFen = chess.fen();
+    const promotion = move.promotion;
+
+    if (
+      promotion !== undefined &&
+      promotion !== 'q' &&
+      promotion !== 'r' &&
+      promotion !== 'b' &&
+      promotion !== 'n'
+    ) {
+      throw new InvalidChessEdgeError('Chess engine returned an invalid promotion piece.');
+    }
 
     return {
       fromFen,
       fromPositionKey,
       toFen,
       toPositionKey: positionKeyFromFen(toFen),
-      moveKey: `${move.from}${move.to}${move.promotion ?? ''}`,
+      moveKey: `${move.from}${move.to}${promotion ?? ''}`,
       from: move.from,
       to: move.to,
-      promotion: move.promotion,
+      promotion,
       san: move.san,
     };
   } catch (error) {
