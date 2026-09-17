@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
+import type { OpeningTrainingService } from './services/openingTrainingService';
 import type { TrainingDataService } from './services/trainingDataService';
 import type { TrainingDataSummary } from './training/types';
 
@@ -78,16 +79,34 @@ function fakeTrainingDataService(
   } as unknown as TrainingDataService;
 }
 
+function fakeOpeningTrainingService(): OpeningTrainingService {
+  return {
+    listRepertoires: vi.fn().mockResolvedValue([]),
+  } as unknown as OpeningTrainingService;
+}
+
 function renderApp({
   initialFen,
   trainingDataService = fakeTrainingDataService(),
+  openingTrainingService = fakeOpeningTrainingService(),
+  section = 'play',
 }: {
   initialFen?: string;
   trainingDataService?: TrainingDataService;
+  openingTrainingService?: OpeningTrainingService;
+  section?: 'train' | 'play' | 'data';
 } = {}) {
-  return render(
-    <App initialFen={initialFen} trainingDataService={trainingDataService} />,
+  const rendered = render(
+    <App
+      initialFen={initialFen}
+      trainingDataService={trainingDataService}
+      openingTrainingService={openingTrainingService}
+    />,
   );
+  if (section !== 'train') {
+    fireEvent.click(screen.getByRole('tab', { name: section === 'play' ? 'Play' : 'Data' }));
+  }
+  return rendered;
 }
 
 test('blocks moves until the 3+2 clock is explicitly started', async () => {
@@ -199,14 +218,33 @@ test('reports a clipboard failure without breaking the game', async () => {
   expect(screen.getByRole('heading', { name: /chess decision trainer/i })).toBeInTheDocument();
 });
 
-test('keeps the chess board available when local training storage initialization fails', async () => {
+test('keeps Play available when local training storage initialization fails', async () => {
+  const user = userEvent.setup();
   const failingService = fakeTrainingDataService({
     initialize: vi.fn().mockRejectedValue(new Error('Storage unavailable')),
   });
 
-  renderApp({ trainingDataService: failingService });
+  renderApp({ trainingDataService: failingService, section: 'data' });
 
-  expect(screen.getByTestId('board')).toBeInTheDocument();
   expect(await screen.findByRole('alert')).toHaveTextContent(/storage unavailable/i);
   expect(screen.getByText(/phase 2 · local training data/i)).toBeInTheDocument();
+  await user.click(screen.getByRole('tab', { name: 'Play' }));
+  expect(screen.getByTestId('board')).toBeInTheDocument();
+});
+
+test('opens on Train and preserves the Play and Data surfaces', async () => {
+  const user = userEvent.setup();
+  renderApp({
+    section: 'train',
+    openingTrainingService: fakeOpeningTrainingService(),
+    trainingDataService: fakeTrainingDataService({
+      initialize: vi.fn().mockResolvedValue(trainingSummary),
+    }),
+  });
+
+  expect(screen.getByRole('tab', { name: 'Train' })).toHaveAttribute('aria-selected', 'true');
+  await user.click(screen.getByRole('tab', { name: 'Play' }));
+  expect(screen.getByLabelText('Chess game')).toBeInTheDocument();
+  await user.click(screen.getByRole('tab', { name: 'Data' }));
+  expect(await screen.findByRole('heading', { name: 'Training data' })).toBeInTheDocument();
 });

@@ -95,3 +95,27 @@ test('failed repertoire-move resolution rolls back inserted attempt and mastery 
   expect(await db.repertoireMoveMastery.count()).toBe(beforeMoveMasteryCount);
   await db.delete();
 });
+
+test('returns the existing attempt without updating mastery twice when attemptId is retried', async () => {
+  const { db, repo, repertoire, transition } = await setupAttemptContext();
+  const input = {
+    attemptId: '11111111-1111-4111-8111-111111111111',
+    timestamp: '2026-09-17T00:00:05.000Z',
+    repertoireId: repertoire.id,
+    positionId: transition.fromPosition.id,
+    repertoireMoveId: transition.repertoireMove.id,
+    expectedMove: transition.moveEdge.moveKey,
+    actualMove: transition.moveEdge.moveKey,
+    correct: true,
+    decisionTimeMs: 1200,
+    hintCount: 0,
+    hintUsed: false,
+    mode: 'opening',
+  };
+  const first = await repo.recordAttempt(input);
+  const second = await repo.recordAttempt(input);
+  expect(second.id).toBe(first.id);
+  expect(await db.trainingAttempts.count()).toBe(1);
+  expect((await db.positionMastery.toArray())[0].attempts).toBe(1);
+  await db.delete();
+});

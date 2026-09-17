@@ -12,6 +12,7 @@
     "build": "tsc -b && vite build"
   },
   "dependencies": {
+    "@echecs/pgn": "5.0.0",
     "chess.js": "1.4.0",
     "dexie": "4.4.6",
     "react": "19.3.0",

@@ -23,17 +23,39 @@ export type RepertoireTransitionInput = {
   role: RepertoireMoveRole;
   preferred: boolean;
   trainable: boolean;
+  order?: number;
+  explanation?: string;
+};
+
+export type CreateRepertoireImportInput = {
+  repertoire: Repertoire;
+  transitions: RepertoireTransitionInput[];
+};
+
+export type RepertoireTrainingSnapshot = {
+  repertoire: Repertoire;
+  positions: Position[];
+  moveEdges: MoveEdge[];
+  repertoirePositions: RepertoirePosition[];
+  repertoireMoves: RepertoireMove[];
+  positionMastery: PositionMastery[];
+  repertoireMoveMastery: RepertoireMoveMastery[];
+  attempts: TrainingAttempt[];
 };
 
 export type RecordAttemptInput = Omit<
   TrainingAttempt,
   'id' | 'masteryBefore' | 'masteryAfter'
->;
+> & { attemptId?: EntityId };
 
 export interface TrainingRepository {
   ensureLocalLearner(displayName?: string): Promise<LearnerProfile>;
   saveRepertoire(repertoire: Repertoire): Promise<void>;
   listRepertoires(learnerId: EntityId): Promise<Repertoire[]>;
+  getRepertoire(repertoireId: EntityId): Promise<Repertoire | undefined>;
+  createRepertoireFromTransitions(input: CreateRepertoireImportInput): Promise<void>;
+  loadRepertoireTrainingSnapshot(repertoireId: EntityId): Promise<RepertoireTrainingSnapshot>;
+  completeSession(sessionId: EntityId, completedAt: string): Promise<void>;
   upsertRepertoireTransition(input: RepertoireTransitionInput): Promise<{
     fromPosition: Position;
     toPosition: Position;

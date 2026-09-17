@@ -71,6 +71,10 @@ export class ChessGame {
     return this.chess.moves({ square, verbose: true });
   }
 
+  allLegalMoves(): Move[] {
+    return this.chess.moves({ verbose: true });
+  }
+
   pieceAt(square: Square): ReturnType<Chess['get']> {
     return this.chess.get(square);
   }
