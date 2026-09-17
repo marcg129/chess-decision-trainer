@@ -67,4 +67,19 @@ describe('OpeningTrainingService', () => {
     const repertoires = await service.listRepertoires();
     expect(repertoires.map((item) => item.id)).toContain(DEMO_REPERTOIRE_ID);
   });
+
+  it('starts a training session through the engine factory', async () => {
+    const { service } = setup();
+    const repertoire = await service.ensureDemoRepertoire();
+    const engine = await service.startSession({
+      repertoireId: repertoire.id,
+      mode: 'practice-line',
+      random: () => 0,
+      now: () => 1_000,
+    });
+
+    expect(engine.state().repertoireId).toBe(repertoire.id);
+    expect(engine.state().mode).toBe('practice-line');
+    expect(engine.state().phase).toBe('awaiting-move');
+  });
 });
