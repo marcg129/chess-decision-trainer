@@ -15,6 +15,17 @@ function backupCounts(backup: TrainingBackupV1) {
   };
 }
 
+async function readFileText(file: File): Promise<string> {
+  if (typeof file.text === 'function') return file.text();
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(reader.error ?? new Error('Unable to read backup file.'));
+    reader.readAsText(file);
+  });
+}
+
 function downloadBackup(backup: TrainingBackupV1, prefix: string): void {
   const blob = new Blob([JSON.stringify(backup, null, 2)], {
     type: 'application/json',
@@ -72,7 +83,7 @@ export function TrainingDataPanel({ service }: { service?: TrainingDataService }
     if (!file) return;
 
     try {
-      const text = await file.text();
+      const text = await readFileText(file);
       const parsed = JSON.parse(text) as unknown;
       setPendingBackup(client.validateBackup(parsed));
     } catch (caught) {
