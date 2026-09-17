@@ -74,16 +74,16 @@ export function OpeningTrainer({
   }, [client, repertoireId, mode]);
 
   const game = useMemo(() => (state ? new ChessGame(state.fen) : null), [state?.fen]);
-  const moveInputEnabled = Boolean(
+  const canSubmitPrompt = Boolean(
     engine
       && state
       && !state.complete
-      && ['awaiting-move', 'retry', 'revealed'].includes(state.phase)
-      && pendingPromotion === null,
+      && ['awaiting-move', 'retry', 'revealed'].includes(state.phase),
   );
+  const moveInputEnabled = canSubmitPrompt && pendingPromotion === null;
 
   const submit = async (move: TrainingMoveInput) => {
-    if (!engine || !moveInputEnabled) return;
+    if (!engine || !canSubmitPrompt) return;
     setError(null);
     try {
       const next = await engine.submitMove(move);
