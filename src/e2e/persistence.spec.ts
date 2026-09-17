@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-const START_KEY = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
+const START_KEY = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKQkq -';
 const NOW = '2026-09-17T14:00:00.000Z';
 
 const backup = {
@@ -60,9 +60,14 @@ const backup = {
   },
 } as const;
 
+async function openData(page: import('@playwright/test').Page) {
+  await page.getByRole('tab', { name: 'Data' }).click();
+  await expect(page.getByRole('heading', { name: 'Training data' })).toBeVisible();
+}
+
 test('restored training data survives reload and exports through the public UI', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Training data' })).toBeVisible();
+  await openData(page);
 
   await page.getByLabel('Restore backup file').setInputFiles({
     name: 'persistence-smoke.json',
@@ -77,6 +82,7 @@ test('restored training data survives reload and exports through the public UI',
   await expect(page.getByText(/1 repertoires · 1 positions · 0 moves/i)).toBeVisible();
 
   await page.reload();
+  await openData(page);
   await expect(page.getByText('Persistence Smoke Repertoire')).toBeVisible();
   await expect(page.getByText(/1 repertoires · 1 positions · 0 moves/i)).toBeVisible();
 
@@ -95,10 +101,10 @@ test('restored training data survives reload and exports through the public UI',
 test('training data utilities fit a 320px viewport without horizontal overflow', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto('/');
+  await openData(page);
 
   const heading = page.getByRole('heading', { name: 'Training data' });
   await heading.scrollIntoViewIfNeeded();
-  await expect(heading).toBeVisible();
   await expect(page.getByRole('button', { name: 'Export backup' })).toBeVisible();
   await expect(page.getByLabel('Restore backup file')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Reset local data' })).toBeVisible();
