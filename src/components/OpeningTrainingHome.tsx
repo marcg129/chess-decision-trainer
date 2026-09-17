@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import '../openingTraining.css';
 import { DEMO_REPERTOIRE_ID } from '../openings/demoPgn';
 import type { OpeningTrainingMode } from '../openings/training/types';
 import { getBrowserOpeningTrainingService } from '../persistence/browserRepository';
