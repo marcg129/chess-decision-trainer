@@ -124,6 +124,101 @@ test('transposed move orders converge on the same canonical destination', async 
   await db.delete();
 });
 
+test('creates a repertoire and all transitions atomically', async () => {
+  const { db, repo, learner } = await setup();
+  const repertoire = makeRepertoire(learner.id, 'Bulk');
+  await repo.createRepertoireFromTransitions({
+    repertoire,
+    transitions: [
+      {
+        repertoireId: repertoire.id,
+        fromFen: new Chess().fen(),
+        move: { from: 'e2', to: 'e4' },
+        role: 'learner', preferred: true, trainable: true, order: 0,
+      },
+      {
+        repertoireId: repertoire.id,
+        fromFen: fenAfter(['e4']),
+        move: { from: 'e7', to: 'e5' },
+        role: 'opponent', preferred: false, trainable: false, order: 1,
+      },
+    ],
+  });
+  expect(await db.repertoires.get(repertoire.id)).toEqual(repertoire);
+  expect(await db.repertoireMoves.count()).toBe(2);
+  await db.delete();
+});
+
+test('does not leave a partial repertoire when one bulk transition is invalid', async () => {
+  const { db, repo, learner } = await setup();
+  const repertoire = makeRepertoire(learner.id, 'Broken bulk');
+  await expect(repo.createRepertoireFromTransitions({
+    repertoire,
+    transitions: [
+      {
+        repertoireId: repertoire.id, fromFen: new Chess().fen(),
+        move: { from: 'e2', to: 'e4' }, role: 'learner', preferred: true, trainable: true,
+      },
+      {
+        repertoireId: repertoire.id, fromFen: new Chess().fen(),
+        move: { from: 'e2', to: 'e5' }, role: 'learner', preferred: false, trainable: true,
+      },
+    ],
+  })).rejects.toThrow();
+  expect(await db.repertoires.get(repertoire.id)).toBeUndefined();
+  expect(await db.repertoireMoves.count()).toBe(0);
+  await db.delete();
+});
+
+test('bulk imports reuse canonical graph rows across separate repertoires', async () => {
+  const { db, repo, learner } = await setup();
+  const first = makeRepertoire(learner.id, 'First bulk');
+  const second = makeRepertoire(learner.id, 'Second bulk');
+  const transitionFor = (repertoireId: string) => ({
+    repertoireId,
+    fromFen: new Chess().fen(),
+    move: { from: 'e2' as const, to: 'e4' as const },
+    role: 'learner' as const,
+    preferred: true,
+    trainable: true,
+  });
+  await repo.createRepertoireFromTransitions({ repertoire: first, transitions: [transitionFor(first.id)] });
+  const positionsAfterFirst = await db.positions.count();
+  const edgesAfterFirst = await db.moveEdges.count();
+  await repo.createRepertoireFromTransitions({ repertoire: second, transitions: [transitionFor(second.id)] });
+  expect(await db.positions.count()).toBe(positionsAfterFirst);
+  expect(await db.moveEdges.count()).toBe(edgesAfterFirst);
+  expect(await db.repertoires.count()).toBe(2);
+  await db.delete();
+});
+
+test('loads a repertoire-scoped training snapshot and completes sessions in place', async () => {
+  const { db, repo, learner } = await setup();
+  const repertoire = makeRepertoire(learner.id, 'Snapshot');
+  await repo.createRepertoireFromTransitions({
+    repertoire,
+    transitions: [{
+      repertoireId: repertoire.id, fromFen: new Chess().fen(),
+      move: { from: 'e2', to: 'e4' }, role: 'learner', preferred: true, trainable: true,
+    }],
+  });
+  const sessionId = createId();
+  await repo.createSession({ id: sessionId, repertoireId: repertoire.id, mode: 'practice-line', startedAt: '2026-09-17T10:00:00.000Z' });
+  const snapshot = await repo.loadRepertoireTrainingSnapshot(repertoire.id);
+  expect(snapshot.repertoire.id).toBe(repertoire.id);
+  expect(snapshot.repertoireMoves).toHaveLength(1);
+  expect(snapshot.positions.length).toBeGreaterThan(0);
+  expect(snapshot.attempts).toEqual([]);
+
+  await repo.completeSession(sessionId, '2026-09-17T10:05:00.000Z');
+  expect(await db.trainingSessions.get(sessionId)).toMatchObject({
+    id: sessionId,
+    startedAt: '2026-09-17T10:00:00.000Z',
+    completedAt: '2026-09-17T10:05:00.000Z',
+  });
+  await db.delete();
+});
+
 test('version 2 migration preserves version 1 learner and repertoire rows', async () => {
   const name = `migration-${crypto.randomUUID()}`;
   const raw = new Dexie(name);
