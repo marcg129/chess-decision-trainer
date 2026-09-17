@@ -4,8 +4,6 @@ import {
   type NotationList,
   type ParseError,
   type ParseWarning,
-  type Piece,
-  type PromotionPiece,
 } from '@echecs/pgn';
 import type {
   ParsedPgnDocument,
@@ -15,7 +13,10 @@ import type {
   PgnIssue,
 } from './types';
 
-const PIECE_CODES: Record<Piece, ParsedPgnMove['piece']> = {
+type PgnPiece = Notation['piece'];
+type PgnPromotion = NonNullable<Notation['promotion']>;
+
+const PIECE_CODES: Record<PgnPiece, ParsedPgnMove['piece']> = {
   pawn: 'p',
   knight: 'n',
   bishop: 'b',
@@ -24,7 +25,7 @@ const PIECE_CODES: Record<Piece, ParsedPgnMove['piece']> = {
   king: 'k',
 };
 
-const PROMOTION_CODES: Record<PromotionPiece, NonNullable<ParsedPgnMove['promotion']>> = {
+const PROMOTION_CODES: Record<PgnPromotion, NonNullable<ParsedPgnMove['promotion']>> = {
   knight: 'n',
   bishop: 'b',
   rook: 'r',
