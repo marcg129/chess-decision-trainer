@@ -170,6 +170,10 @@ export function buildRepertoireImportPlan(
     .sort((a, b) => a.order - b.order)
     .map<PlannedRepertoireTransition>(({ fromPositionKey: _from, toPositionKey: _to, moveKey: _key, ...item }) => item);
 
+  if (!transitions.some((transition) => transition.trainable)) {
+    throw new Error('Selected PGN games do not contain a trainable learner move for this side.');
+  }
+
   return {
     name,
     side: options.side,
