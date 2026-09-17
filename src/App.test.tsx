@@ -59,11 +59,15 @@ const trainingSummary: TrainingDataSummary = {
   schemaVersion: 2,
 };
 
+function pendingForever<T>(): Promise<T> {
+  return new Promise(() => undefined);
+}
+
 function fakeTrainingDataService(
   overrides: Partial<TrainingDataService> = {},
 ): TrainingDataService {
   return {
-    initialize: vi.fn().mockResolvedValue(trainingSummary),
+    initialize: vi.fn(() => pendingForever<TrainingDataSummary>()),
     refreshSummary: vi.fn().mockResolvedValue(trainingSummary),
     exportBackup: vi.fn(),
     validateBackup: vi.fn(),
