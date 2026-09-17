@@ -51,6 +51,11 @@ function fakeService(overrides: Partial<OpeningTrainingService> = {}): OpeningTr
   } as unknown as OpeningTrainingService;
 }
 
+function countText(expected: string) {
+  return (_content: string, element: Element | null) =>
+    element?.tagName === 'SPAN' && element.textContent?.trim() === expected;
+}
+
 async function choosePgnFile() {
   const file = new File(['[Event "fixture"]\n1. e4 *'], 'repertoire.pgn', {
     type: 'application/x-chess-pgn',
@@ -93,9 +98,9 @@ describe('PgnImportPanel', () => {
       selectedGameIndexes: [0, 1],
     });
     expect(service.commitImport).not.toHaveBeenCalled();
-    expect(await screen.findByText(/2 games/i)).toBeInTheDocument();
-    expect(screen.getByText(/9 positions/i)).toBeInTheDocument();
-    expect(screen.getByText(/8 moves/i)).toBeInTheDocument();
+    expect(await screen.findByText(countText('2 games'))).toBeInTheDocument();
+    expect(screen.getByText(countText('9 positions'))).toBeInTheDocument();
+    expect(screen.getByText(countText('8 moves'))).toBeInTheDocument();
     expect(screen.getByText(/disagree on the preferred learner move/i)).toBeInTheDocument();
   });
 
