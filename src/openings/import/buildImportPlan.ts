@@ -74,7 +74,6 @@ export function buildRepertoireImportPlan(
     parsed: ParsedPgnMove,
     fromFen: string,
     gameIndex: number,
-    onGameMainLine: boolean,
   ) => {
     const game = new ChessGame(fromFen);
     const move = resolveParsedMove(game, parsed);
@@ -103,7 +102,7 @@ export function buildRepertoireImportPlan(
       existing.explanation = parsed.comment;
     }
 
-    if (isLearner && onGameMainLine) {
+    if (isLearner) {
       const candidateKey = `${gameIndex}|${derived.fromPositionKey}`;
       if (!preferredByGamePosition.has(candidateKey)) {
         preferredByGamePosition.set(candidateKey, { gameIndex, moveKey: derived.moveKey });
@@ -117,21 +116,20 @@ export function buildRepertoireImportPlan(
     line: ParsedPgnLine,
     startFen: string,
     gameIndex: number,
-    onGameMainLine: boolean,
   ): void => {
     let currentFen = startFen;
     for (const parsed of line) {
       const beforeFen = currentFen;
-      const derived = collectMove(parsed, beforeFen, gameIndex, onGameMainLine);
+      const derived = collectMove(parsed, beforeFen, gameIndex);
       for (const variation of parsed.variations) {
-        walkLine(variation, beforeFen, gameIndex, false);
+        walkLine(variation, beforeFen, gameIndex);
       }
       currentFen = derived.toFen;
     }
   };
 
   selectedGames.forEach((game, selectedOffset) => {
-    walkLine(game.moves, rootFens[selectedOffset], game.index, true);
+    walkLine(game.moves, rootFens[selectedOffset], game.index);
   });
 
   const warnings: ImportWarning[] = document.warnings.map((warning) => ({
