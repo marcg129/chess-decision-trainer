@@ -9,6 +9,7 @@ import type {
 import {
   createId,
   type EntityId,
+  type MoveEdge,
   type Position,
   type TrainingMoveInput,
 } from '../../training/types';
@@ -76,7 +77,7 @@ export class OpeningTrainingEngine {
   private readonly sessionId = createId();
 
   private readonly positionById = new Map<EntityId, Position>();
-  private readonly edgeById = new Map(this.snapshot?.moveEdges?.map((edge) => [edge.id, edge]) ?? []);
+  private readonly edgeById = new Map<EntityId, MoveEdge>();
   private readonly outgoingByPosition = new Map<EntityId, OpeningMoveChoice[]>();
   private readonly positionMasteryAttempts = new Map<EntityId, number>();
   private readonly opponentExposure = new Map<EntityId, number>();
@@ -464,7 +465,6 @@ export class OpeningTrainingEngine {
 
   private async advancePracticeFrom(position: Position, preserveFeedback: boolean): Promise<void> {
     let current = position;
-    let keepFeedback = preserveFeedback;
 
     while (true) {
       const outgoing = this.outgoingByPosition.get(current.id) ?? [];
@@ -475,7 +475,7 @@ export class OpeningTrainingEngine {
       }
 
       if (current.sideToMove === this.learnerSide) {
-        this.setPrompt(current, keepFeedback);
+        this.setPrompt(current, preserveFeedback);
         return;
       }
 
@@ -505,7 +505,6 @@ export class OpeningTrainingEngine {
       );
       current = choice.toPosition;
       this.currentPosition = current;
-      keepFeedback = preserveFeedback;
     }
   }
 
