@@ -15,7 +15,8 @@
     "dexie": "4.4.6",
     "react": "19.3.0",
     "react-chessboard": "5.12.1",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.8.0",
