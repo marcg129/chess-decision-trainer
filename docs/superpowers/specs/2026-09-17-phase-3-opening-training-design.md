@@ -8,14 +8,14 @@ Branch: `feature/phase-3-opening-training`
 
 Turn the Phase 1 chess core and Phase 2 local training-data foundation into the first usable opening-learning experience. Phase 3 must let a learner import real opening material from PGN, practice complete lines, drill individual positions, receive guided correction and speed feedback, and persist attempts/mastery through the existing Phase 2 data model.
 
-The core product goal remains practical decision-making rather than rote move memorization. The trainer should help the learner recognize positions, choose a repertoire move quickly, understand mistakes, and rehearse likely opponent responses without introducing engine evaluation or full spaced-repetition scheduling yet.
+The product goal remains practical decision-making rather than rote move memorization. The trainer should help the learner recognize positions, choose a repertoire move quickly, understand mistakes, and rehearse likely opponent responses without introducing engine evaluation or full spaced-repetition scheduling yet.
 
 ## Scope
 
 Phase 3 includes:
 
 - PGN import with nested variation support and comment preservation.
-- Multi-game import preview and selective merge into one repertoire.
+- Multi-game import preview and selective merge into one newly created repertoire.
 - Explicit White/Black repertoire-side selection during import.
 - One built-in demo repertoire that uses the same import/data path as user PGNs.
 - A dedicated plain-TypeScript opening-training engine.
@@ -33,6 +33,7 @@ Phase 3 explicitly does not include:
 - Stockfish evaluation or engine-based correctness.
 - FSRS or date-based spaced-repetition scheduling.
 - A full visual repertoire editor.
+- Appending/import-merging new PGN material into an existing repertoire.
 - Cloud accounts or synchronization.
 - Bot play beyond the existing free-play board.
 - Tactical, middlegame, endgame, or post-game mistake generation.
@@ -90,8 +91,8 @@ A PGN parser/library may be used for syntax/variation-tree parsing, but every de
 Responsibilities:
 
 - Present all parsed games before import.
-- Let the learner select which games belong in the target repertoire.
-- Require a target repertoire name and side: White or Black.
+- Let the learner select which games belong in the new repertoire.
+- Require a new repertoire name and side: White or Black.
 - Show import counts and warnings before mutation.
 - Validate every selected variation and move progression.
 - Convert selected lines into canonical repertoire transitions.
@@ -99,9 +100,11 @@ Responsibilities:
 
 The importer must report the failing game and variation path when possible.
 
+Phase 3 imports always create a new repertoire. It may reuse canonical positions and move edges already present globally, but it does not mutate an existing repertoire's membership. Editing or merging into an existing repertoire is deferred to a later repertoire-management milestone.
+
 ### Repertoire graph mapping
 
-Selected games merge into one Phase 2 repertoire.
+Selected games merge into one new Phase 2 repertoire.
 
 For every legal transition:
 
@@ -109,11 +112,13 @@ For every legal transition:
 - Transpositions converge naturally through normalized position identity.
 - Moves by the selected repertoire side map to learner repertoire moves.
 - Moves by the opposite side map to opponent repertoire moves.
-- The PGN main-line learner move at a position becomes the preferred move by default.
-- Other imported learner variations at that same position remain accepted alternatives.
-- PGN comments attach to the relevant repertoire move explanation or repertoire-position notes, according to where the comment occurs.
+- The earliest selected game in source-PGN order that reaches a learner position determines that position's default preferred move from its main line.
+- A later selected game's different main-line learner move at the same position is imported as an accepted alternative, not a second preferred move.
+- The import preview warns when selected games disagree on the default preferred move at the same learner position.
+- Other imported learner variations remain accepted alternatives.
+- PGN comments attach to the relevant repertoire move explanation or repertoire-position notes according to where the comment occurs.
 
-Repeated imports of overlapping material must not manufacture duplicate canonical positions or move edges.
+Repeated imports of overlapping material may create separate repertoires, but they must reuse the same canonical positions and move edges rather than manufacture duplicate graph nodes.
 
 ### Opening training engine
 
@@ -127,7 +132,7 @@ Responsibilities:
 - Expose preferred and accepted learner moves for grading.
 - Select opponent replies.
 - Track first/second misses, hints, reveal state, decision timing, and progress.
-- Resolve attempts into the existing Phase 2 `TrainingAttempt` format.
+- Resolve attempts into the Phase 2 attempt/mastery path.
 - Advance only after a durable attempt write succeeds.
 
 The engine must not import React or Dexie.
@@ -142,7 +147,7 @@ Responsibilities:
 - Keep the board dominant and uncluttered.
 - Reuse one training layout for both Practice Line and Quick Recall.
 
-The UI must not implement grading, branch weighting, or persistence rules independently.
+The UI must not independently implement grading, branch weighting, or persistence rules.
 
 ## PGN import experience
 
@@ -154,7 +159,7 @@ Select PGN file
   → show game list
   → select games
   → choose White/Black repertoire side
-  → name repertoire
+  → name new repertoire
   → build preview
   → validate every selected branch
   → show counts/warnings
@@ -166,15 +171,17 @@ No durable data is written before the selected import fully validates.
 
 ### Multi-game behavior
 
-The import screen shows parsed games and lets the learner choose any subset. The selected games are merged into one repertoire rather than automatically creating one repertoire per game or blindly combining every game in the file.
+The import screen shows parsed games and lets the learner choose any subset. The selected games are merged into one newly created repertoire rather than automatically creating one repertoire per game or blindly combining every game in the file.
+
+Source-PGN order among the selected games is preserved and is used only as the deterministic tie-breaker for conflicting preferred main-line learner moves.
 
 ### Built-in demo repertoire
 
-Phase 3 ships one small built-in repertoire fixture. It must enter the system through the same import/graph path as a user PGN so it doubles as a known-good example and test fixture. No special-case training logic may depend on the demo repertoire.
+Phase 3 ships one small built-in repertoire fixture. Choosing the demo runs the same parser/validation/graph-import service used by user PGNs; no special-case training logic may depend on demo content. Demo installation must be idempotent for a local data set so repeated attempts to open the demo do not create duplicate demo repertoires.
 
 ## Training modes
 
-## Practice Line
+### Practice Line
 
 Practice Line is the primary experience.
 
@@ -195,28 +202,21 @@ When it is the opponent's turn:
 
 Practice Line ends when the active branch reaches a repertoire endpoint.
 
-## Quick Recall
+### Quick Recall
 
 Quick Recall jumps directly to trainable repertoire positions instead of replaying from move one.
 
-Default session size: 10 resolved learner prompts.
+Default session size: 10 resolved learner prompts. The learner may stop early.
 
-The learner may stop early.
+Position selection is simple weakness-weighted selection. Higher weight goes to positions that are unseen, previously incorrect, hint-heavy, or slower than target.
 
-Position selection is simple weakness-weighted selection. Higher weight goes to positions that are:
-
-- unseen,
-- previously incorrect,
-- hint-heavy,
-- or slower than target.
-
-This selection may use aggregate mastery plus recent attempt history, but it must not create date-based scheduling or FSRS semantics in Phase 3.
+Selection may use aggregate mastery plus recent attempt history, but it must not create date-based scheduling or FSRS semantics in Phase 3.
 
 ## Learner move grading
 
 At a trainable learner position:
 
-- One repertoire move is preferred.
+- Exactly one repertoire move is preferred.
 - Other imported learner moves may be accepted alternatives.
 - Preferred move: correct, full positive feedback.
 - Accepted alternative: still correct, but feedback identifies the preferred repertoire move.
@@ -231,15 +231,15 @@ Correction follows this sequence:
 
 1. First incorrect repertoire move:
    - Do not advance.
-   - Mark the miss in transient session state.
+   - Record the miss in transient prompt state.
    - Prompt the learner to look again.
    - Keep a hint available.
 2. Second incorrect repertoire move:
    - Reveal the preferred move and relevant explanation/comment when available.
    - Do not auto-play the answer.
-3. The learner must physically make an accepted correct move before the position resolves and the session advances.
+3. The learner must physically make an accepted correct move before the position resolves and the session can persist/advance.
 
-The final durable attempt must preserve enough information to reflect that the prompt involved mistakes/hints even though the learner eventually entered the correct move. Phase 3 may extend attempt metadata if the current Phase 2 fields are insufficient, but such extensions must remain backward-compatible with backup versioning/migrations.
+The durable attempt must preserve the quality of the original recall rather than misrepresenting a corrected prompt as a clean first-try success. Phase 3 therefore may extend attempt metadata with backward-compatible fields such as wrong-attempt count and first submitted move if the current Phase 2 fields cannot represent this accurately. Any extension must be versioned, migration-tested, and backup-safe.
 
 ## Hints and explanations
 
@@ -270,12 +270,12 @@ Hard countdown penalties belong to a later practical-speed milestone.
 
 When multiple opponent responses exist from the same position, the engine uses weighted rotation rather than always following the PGN main line or uniformly random selection.
 
-The weighting should prefer responses with less learner exposure. A simple implementation may derive weight from repertoire/position attempt counts or session-local exposure counts.
+The weighting prefers responses with less learner exposure. A simple implementation may derive weight from persisted exposure/mastery information plus session-local exposure counts.
 
 Requirements:
 
-- unseen/less-practiced branch receives greater selection weight,
-- heavily repeated branch receives lower weight,
+- unseen/less-practiced branches receive greater selection weight,
+- heavily repeated branches receive lower weight,
 - every valid branch remains selectable,
 - selection logic accepts an injectable random/selection source for deterministic tests.
 
@@ -305,7 +305,7 @@ Normal flow:
 prompt
  → learner move(s)
  → resolve feedback
- → build TrainingAttempt
+ → build attempt
  → persist attempt + mastery atomically
  → acknowledge success
  → advance
@@ -319,7 +319,7 @@ If persistence fails:
 - the user can retry persistence without replaying the position,
 - duplicate attempts must not be created by repeated retry actions.
 
-The engine should distinguish "resolved but not persisted" from "persisted and ready to advance."
+The engine must distinguish `resolved-but-not-persisted` from `persisted-and-ready-to-advance`.
 
 ## Navigation and UI structure
 
@@ -412,7 +412,8 @@ Repository interfaces will likely need read/query capabilities for:
 - resolving outgoing repertoire transitions for a position,
 - loading mastery/attempt summaries needed for weighting,
 - loading trainable positions,
-- and performing transactional bulk import.
+- performing transactional bulk import,
+- and idempotently ensuring the built-in demo repertoire.
 
 Any required schema additions must be minimal, versioned, backup-safe, and covered by migration tests.
 
@@ -458,12 +459,13 @@ Phase 3 must retain the Phase 2 verification bar and add targeted coverage for t
 - nested variations,
 - comments/explanations,
 - White/Black role assignment,
-- main-line preferred move assignment,
+- deterministic preferred-move conflict handling with preview warning,
 - accepted learner alternatives,
 - transposition convergence,
-- duplicate/overlapping re-import behavior,
+- overlapping material across separately imported repertoires reusing canonical graph nodes,
 - illegal variation rejection,
-- transactional rollback with no partial import.
+- transactional rollback with no partial import,
+- idempotent demo installation.
 
 ### Training-engine coverage
 
@@ -475,6 +477,7 @@ Phase 3 must retain the Phase 2 verification bar and add targeted coverage for t
 - first miss → retry,
 - second miss → reveal,
 - required manual correct move after reveal,
+- wrong-attempt/hint quality retained in the durable attempt,
 - hint tracking,
 - soft speed feedback,
 - attempt construction,
@@ -514,18 +517,19 @@ CI continues to run:
 Phase 3 is complete when a user can:
 
 1. Open the app and enter Train mode.
-2. Try the built-in demo repertoire without importing anything.
+2. Try the built-in demo repertoire without manually importing a PGN.
 3. Import a PGN containing multiple games and nested variations.
-4. Select a subset of games, choose White or Black, preview the import, and persist it atomically.
-5. Practice a complete line while the app supplies weighted opponent replies.
-6. Receive preferred/alternative grading, guided correction, hints, comments, and soft speed feedback.
-7. Complete a 10-position Quick Recall session biased toward weaker/unseen positions.
-8. Reload the browser and retain imported repertoire data, attempts, and mastery.
-9. Use the workflow at roughly 320px width without horizontal overflow.
-10. Complete all automated verification with the existing chess/play/data behavior still intact.
+4. Select a subset of games, choose White or Black, preview the import, and atomically create one repertoire.
+5. See a warning when selected games disagree on a preferred main-line learner move, with deterministic source-order precedence.
+6. Practice a complete line while the app supplies weighted opponent replies.
+7. Receive preferred/alternative grading, guided correction, hints, comments, and soft speed feedback.
+8. Complete a 10-position Quick Recall session biased toward weaker/unseen positions.
+9. Reload the browser and retain imported repertoire data, attempts, and mastery.
+10. Use the workflow at roughly 320px width without horizontal overflow.
+11. Complete all automated verification with the existing chess/play/data behavior still intact.
 
 ## Deferred follow-on work
 
 Phase 4 may add adaptive scheduling/FSRS on top of the attempts/mastery generated here.
 
-Later milestones may add Stockfish analysis, bot play, mistake-bank training, generated tactics, middlegame/endgame study, post-game review, and the signature MOVE OR THINK? practical-speed mode.
+Later milestones may add a visual repertoire editor and existing-repertoire merge/import, Stockfish analysis, bot play, mistake-bank training, generated tactics, middlegame/endgame study, post-game review, and the signature MOVE OR THINK? practical-speed mode.
