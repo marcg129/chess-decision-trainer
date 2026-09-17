@@ -12,16 +12,23 @@ import {
   PromotionPicker,
   type PromotionPiece,
 } from './components/PromotionPicker';
+import { TrainingDataPanel } from './components/TrainingDataPanel';
 import { ChessGame, type GameSnapshot } from './core/game';
 import { createMoveDecisionRecord } from './core/moveTelemetry';
 import type { MoveDecisionRecord } from './core/trainingTypes';
 import { useChessClock } from './hooks/useChessClock';
+import type { TrainingDataService } from './services/trainingDataService';
 
 const CLOCK_CONFIG = { initialMs: 180_000, incrementMs: 2_000 };
 
 type Orientation = 'white' | 'black';
 type MoveRequestResult = 'moved' | 'promotion' | 'invalid';
 type PendingPromotion = { from: Square; to: Square };
+
+type AppProps = {
+  initialFen?: string;
+  trainingDataService?: TrainingDataService;
+};
 
 function statusText(snapshot: GameSnapshot, flagged: 'w' | 'b' | null, running: boolean): string {
   if (flagged) return `${flagged === 'w' ? 'White' : 'Black'} lost on time`;
@@ -41,7 +48,7 @@ function statusText(snapshot: GameSnapshot, flagged: 'w' | 'b' | null, running: 
   }
 }
 
-export default function App({ initialFen }: { initialFen?: string }) {
+export default function App({ initialFen, trainingDataService }: AppProps) {
   const gameRef = useRef<ChessGame | null>(null);
   if (gameRef.current === null) {
     gameRef.current = new ChessGame(initialFen);
@@ -201,7 +208,7 @@ export default function App({ initialFen }: { initialFen?: string }) {
     <main className="app-shell">
       <header className="app-header">
         <div>
-          <p className="eyebrow">Phase 1 · Chess core</p>
+          <p className="eyebrow">Phase 2 · Local training data</p>
           <h1>Chess Decision Trainer</h1>
         </div>
         <p className="status-line" role="status">
@@ -265,6 +272,10 @@ export default function App({ initialFen }: { initialFen?: string }) {
           />
         </aside>
       </section>
+
+      <div className="training-data-section">
+        <TrainingDataPanel service={trainingDataService} />
+      </div>
 
       {pendingPromotion && (
         <PromotionPicker
