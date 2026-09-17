@@ -55,7 +55,7 @@ function installDownloadSpies() {
   Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL });
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL });
   let filename = '';
-  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function () {
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
     filename = this.download;
   });
   return {
