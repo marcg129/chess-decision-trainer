@@ -155,14 +155,16 @@ export class DexieTrainingRepository {
     try {
       return await this.db.transaction(
         'rw',
-        this.db.trainingAttempts,
-        this.db.positionMastery,
-        this.db.repertoireMoveMastery,
-        this.db.trainingSessions,
-        this.db.repertoires,
-        this.db.positions,
-        this.db.repertoireMoves,
-        this.db.moveEdges,
+        [
+          this.db.trainingAttempts,
+          this.db.positionMastery,
+          this.db.repertoireMoveMastery,
+          this.db.trainingSessions,
+          this.db.repertoires,
+          this.db.positions,
+          this.db.repertoireMoves,
+          this.db.moveEdges,
+        ],
         async () => {
           const repertoire = await this.db.repertoires.get(input.repertoireId);
           if (!repertoire) {
@@ -217,12 +219,12 @@ export class DexieTrainingRepository {
             : undefined;
 
           const masteryBefore = {
-            positionState: currentPositionMastery?.state ?? 'new' as const,
+            positionState: currentPositionMastery?.state ?? ('new' as const),
             positionScore: currentPositionMastery?.score ?? 0,
             ...(input.repertoireMoveId
               ? {
                   repertoireMoveState:
-                    currentRepertoireMoveMastery?.state ?? 'new' as const,
+                    currentRepertoireMoveMastery?.state ?? ('new' as const),
                   repertoireMoveScore: currentRepertoireMoveMastery?.score ?? 0,
                 }
               : {}),
