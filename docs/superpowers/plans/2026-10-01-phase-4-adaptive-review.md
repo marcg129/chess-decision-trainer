@@ -162,7 +162,7 @@ Commit message: `feat: add fsrs scheduling adapter`
 **Interfaces:**
 - Produces database schema v3 with `repertoireMoveMastery.nextReviewAt` indexed.
 - Produces: `TrainingRepository.updateReviewSettings(settings: ReviewSettings): Promise<LearnerProfile>`
-- Produces: `TrainingRepository.loadReviewInventory(filterRepertoireId?: EntityId): Promise<ReviewInventory>`
+- Produces: `TrainingRepository.loadReviewInventory(input: { dueThroughIso: string; filterRepertoireId?: EntityId }): Promise<ReviewInventory>`
 - Produces: `TrainingRepository.countNewReviewIntroductions(startIso: string, endIso: string): Promise<number>`
 - `ReviewInventory` returns active repertoire targets with position, preferred move/edge, accepted alternatives, target mastery, opening depth/order, and prior scheduling-applied attempt count.
 
@@ -197,7 +197,7 @@ Expected: FAIL on missing repository methods.
 
 - [ ] **Step 6: Implement settings, inventory, and daily-count repository methods**
 
-Use the new due index for scheduled due reads; preserve deterministic ordering in returned inventory.
+Use the new due index to fetch only mastery records due at or before `dueThroughIso`; separately include unscheduled preferred targets as new-card candidates. Preserve deterministic ordering in returned inventory.
 
 - [ ] **Step 7: Run Task 3 tests**
 
@@ -438,6 +438,8 @@ Commit message: `feat: add adaptive review session engine`
 
 **Interfaces:**
 - `ReviewTrainer { service?: ReviewTrainingService; repertoireId?: EntityId; onExit(): void }`
+- `OpeningTrainingPage` accepts `reviewService?: ReviewTrainingService` and routes the new review view to `ReviewTrainer`.
+- `AppProps` gains `reviewTrainingService?: ReviewTrainingService` for test injection while browser defaults still come from `browserRepository`.
 - Opening home loads review overview, renders `N due · M new available`, settings, global Review Due start, and optional repertoire filter.
 - Opening page adds `{ kind: 'review'; repertoireId?: EntityId }` view without changing Practice Line/Quick Recall launch shape.
 
@@ -489,7 +491,7 @@ Commit message: `feat: add review due training interface`
 ### Task 9: Browser E2E, Documentation, and Full Verification
 
 **Files:**
-- Modify/Create: `src/e2e/opening-training.spec.ts` or the existing Phase 3 opening E2E file
+- Modify: `src/e2e/openingTraining.spec.ts`
 - Modify: `README.md`
 - Modify only if needed: `.github/workflows/ci.yml`
 
