@@ -1,4 +1,5 @@
 import type { Square } from 'chess.js';
+import type { ReviewAttemptMetadata, ReviewSettings } from '../review/types';
 
 export type EntityId = string;
 export type IsoTimestamp = string;
@@ -15,6 +16,7 @@ export type TrainingMoveInput = {
 export type LearnerProfile = {
   id: EntityId;
   displayName: string;
+  reviewSettings?: ReviewSettings;
   createdAt: IsoTimestamp;
   updatedAt: IsoTimestamp;
 };
@@ -135,6 +137,7 @@ export type TrainingAttempt = {
   hintCount: number;
   hintUsed: boolean;
   mode: string;
+  review?: ReviewAttemptMetadata;
   masteryBefore: AttemptMasterySnapshot;
   masteryAfter: AttemptMasterySnapshot;
 };
