@@ -1,3 +1,5 @@
+import { normalizeReviewSettings } from '../review/settings';
+import type { ReviewSettings } from '../review/types';
 import { InvalidChessEdgeError } from '../training/errors';
 import { deriveTransition, type DerivedTransition } from '../training/graph';
 import {
@@ -9,6 +11,8 @@ import type {
   RecordAttemptInput,
   RepertoireTrainingSnapshot,
   RepertoireTransitionInput,
+  ReviewInventory,
+  ReviewMoveChoice,
 } from '../training/repositories';
 import type {
   EntityId,
@@ -228,6 +232,231 @@ export class DexieTrainingRepository {
         .where('repertoireMoveId')
         .equals(repertoireMoveId)
         .first();
+    } catch (error) {
+      translatePersistenceError(error);
+    }
+  }
+
+  async updateReviewSettings(settings: ReviewSettings): Promise<LearnerProfile> {
+    const normalized = normalizeReviewSettings(settings);
+    try {
+      const learner = await this.ensureLocalLearner();
+      const updated: LearnerProfile = {
+        ...learner,
+        reviewSettings: normalized,
+        updatedAt: isoNow(),
+      };
+      await this.db.learnerProfiles.put(updated);
+      return updated;
+    } catch (error) {
+      translatePersistenceError(error);
+    }
+  }
+
+  async loadReviewInventory(input: {
+    dueThroughIso: string;
+    filterRepertoireId?: EntityId;
+  }): Promise<ReviewInventory> {
+    if (Number.isNaN(Date.parse(input.dueThroughIso))) {
+      throw new TransactionError('Review inventory due cutoff must be a valid timestamp.');
+    }
+
+    try {
+      const allRepertoires = await this.db.repertoires.toArray();
+      const repertoires = allRepertoires.filter(
+        (item) =>
+          !item.archived
+          && (!input.filterRepertoireId || item.id === input.filterRepertoireId),
+      );
+      if (repertoires.length === 0) {
+        return { due: [], newCandidates: [] };
+      }
+
+      const repertoireIds = repertoires.map((item) => item.id);
+      const [memberships, repertoireMoves, dueMasteries, attempts] = await Promise.all([
+        this.db.repertoirePositions.where('repertoireId').anyOf(repertoireIds).toArray(),
+        this.db.repertoireMoves.where('repertoireId').anyOf(repertoireIds).toArray(),
+        this.db.repertoireMoveMastery
+          .where('nextReviewAt')
+          .belowOrEqual(input.dueThroughIso)
+          .toArray(),
+        this.db.trainingAttempts.where('repertoireId').anyOf(repertoireIds).toArray(),
+      ]);
+
+      const positionIds = [...new Set(memberships.map((item) => item.positionId))];
+      const moveEdgeIds = [...new Set(repertoireMoves.map((item) => item.moveEdgeId))];
+      const repertoireMoveIds = repertoireMoves.map((item) => item.id);
+
+      const [positions, moveEdges, allMasteries] = await Promise.all([
+        positionIds.length
+          ? this.db.positions.bulkGet(positionIds)
+          : Promise.resolve([]),
+        moveEdgeIds.length
+          ? this.db.moveEdges.bulkGet(moveEdgeIds)
+          : Promise.resolve([]),
+        repertoireMoveIds.length
+          ? this.db.repertoireMoveMastery
+              .where('repertoireMoveId')
+              .anyOf(repertoireMoveIds)
+              .toArray()
+          : Promise.resolve([]),
+      ]);
+
+      const positionById = new Map(
+        positions.filter((item): item is Position => Boolean(item))
+          .map((item) => [item.id, item]),
+      );
+      const edgeById = new Map(
+        moveEdges.filter((item): item is MoveEdge => Boolean(item))
+          .map((item) => [item.id, item]),
+      );
+      const masteryByMoveId = new Map(
+        allMasteries.map((item) => [item.repertoireMoveId, item]),
+      );
+      const dueMoveIds = new Set(
+        dueMasteries.map((item) => item.repertoireMoveId),
+      );
+      const priorScheduledReviews = new Map<EntityId, number>();
+      for (const attempt of attempts) {
+        const review = attempt.review;
+        if (!review?.schedulingApplied) continue;
+        priorScheduledReviews.set(
+          review.targetRepertoireMoveId,
+          (priorScheduledReviews.get(review.targetRepertoireMoveId) ?? 0) + 1,
+        );
+      }
+
+      const due: ReviewInventory['due'] = [];
+      const newCandidates: ReviewInventory['newCandidates'] = [];
+
+      for (const repertoire of repertoires) {
+        const repMemberships = memberships.filter(
+          (item) => item.repertoireId === repertoire.id,
+        );
+        const repMoves = repertoireMoves.filter(
+          (item) => item.repertoireId === repertoire.id,
+        );
+
+        const sourceIds = new Set<EntityId>();
+        const destinationIds = new Set<EntityId>();
+        const outgoing = new Map<EntityId, EntityId[]>();
+        for (const repertoireMove of repMoves) {
+          const edge = edgeById.get(repertoireMove.moveEdgeId);
+          if (!edge) {
+            throw new TransactionError('Review repertoire references a missing move edge.');
+          }
+          sourceIds.add(edge.fromPositionId);
+          destinationIds.add(edge.toPositionId);
+          const next = outgoing.get(edge.fromPositionId) ?? [];
+          next.push(edge.toPositionId);
+          outgoing.set(edge.fromPositionId, next);
+        }
+
+        const roots = [...sourceIds].filter((id) => !destinationIds.has(id));
+        if (roots.length !== 1) {
+          throw new TransactionError(
+            `Review repertoire requires exactly one root; found ${roots.length}.`,
+          );
+        }
+
+        const depthByPositionId = new Map<EntityId, number>([[roots[0], 0]]);
+        const queue = [roots[0]];
+        while (queue.length > 0) {
+          const current = queue.shift()!;
+          const depth = depthByPositionId.get(current)!;
+          for (const destinationId of outgoing.get(current) ?? []) {
+            const existing = depthByPositionId.get(destinationId);
+            if (existing === undefined || depth + 1 < existing) {
+              depthByPositionId.set(destinationId, depth + 1);
+              queue.push(destinationId);
+            }
+          }
+        }
+
+        for (const membership of repMemberships.filter((item) => item.trainable)) {
+          const position = positionById.get(membership.positionId);
+          if (!position) {
+            throw new TransactionError('Review repertoire references a missing position.');
+          }
+
+          const choices: ReviewMoveChoice[] = repMoves
+            .map((repertoireMove) => {
+              const moveEdge = edgeById.get(repertoireMove.moveEdgeId);
+              if (!moveEdge || moveEdge.fromPositionId !== position.id) return undefined;
+              const toPosition = positionById.get(moveEdge.toPositionId);
+              if (!toPosition) {
+                throw new TransactionError(
+                  'Review repertoire move references a missing destination position.',
+                );
+              }
+              return { repertoireMove, moveEdge, toPosition };
+            })
+            .filter((choice): choice is ReviewMoveChoice =>
+              Boolean(choice) && choice!.repertoireMove.role !== 'opponent');
+
+          const preferredChoices = choices.filter(
+            (choice) => choice.repertoireMove.preferred,
+          );
+          if (preferredChoices.length !== 1) {
+            throw new TransactionError(
+              `Trainable review position requires exactly one preferred learner move; found ${preferredChoices.length}.`,
+            );
+          }
+
+          const preferred = preferredChoices[0];
+          const mastery = masteryByMoveId.get(preferred.repertoireMove.id);
+          const target = {
+            repertoire,
+            position,
+            preferred,
+            alternatives: choices.filter(
+              (choice) => choice.repertoireMove.id !== preferred.repertoireMove.id,
+            ),
+            ...(mastery ? { mastery } : {}),
+            depth: depthByPositionId.get(position.id) ?? Number.MAX_SAFE_INTEGER,
+            sourceOrder: preferred.repertoireMove.order ?? Number.MAX_SAFE_INTEGER,
+            priorScheduledReviews:
+              priorScheduledReviews.get(preferred.repertoireMove.id) ?? 0,
+          };
+
+          if (dueMoveIds.has(preferred.repertoireMove.id)) {
+            due.push(target);
+          } else if (
+            !mastery
+            || (mastery.nextReviewAt === null && mastery.schedulingData === null)
+          ) {
+            newCandidates.push(target);
+          }
+        }
+      }
+
+      due.sort((a, b) => {
+        const aDue = a.mastery?.nextReviewAt ?? '';
+        const bDue = b.mastery?.nextReviewAt ?? '';
+        return aDue.localeCompare(bDue)
+          || a.repertoire.id.localeCompare(b.repertoire.id)
+          || a.preferred.repertoireMove.id.localeCompare(b.preferred.repertoireMove.id);
+      });
+
+      return { due, newCandidates };
+    } catch (error) {
+      translatePersistenceError(error);
+    }
+  }
+
+  async countNewReviewIntroductions(startIso: string, endIso: string): Promise<number> {
+    const start = Date.parse(startIso);
+    const end = Date.parse(endIso);
+    if (Number.isNaN(start) || Number.isNaN(end) || end <= start) {
+      throw new TransactionError('Review introduction range must be valid and increasing.');
+    }
+
+    try {
+      return await this.db.trainingAttempts
+        .where('timestamp')
+        .between(startIso, endIso, true, false)
+        .filter((attempt) => attempt.review?.newCard === true)
+        .count();
     } catch (error) {
       translatePersistenceError(error);
     }
