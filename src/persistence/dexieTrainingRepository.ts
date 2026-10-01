@@ -302,14 +302,14 @@ export class DexieTrainingRepository {
           : Promise.resolve([]),
       ]);
 
-      const positionById = new Map(
-        positions.filter((item): item is Position => Boolean(item))
-          .map((item) => [item.id, item]),
-      );
-      const edgeById = new Map(
-        moveEdges.filter((item): item is MoveEdge => Boolean(item))
-          .map((item) => [item.id, item]),
-      );
+      const positionById = new Map<EntityId, Position>();
+      for (const item of positions) {
+        if (item) positionById.set(item.id, item);
+      }
+      const edgeById = new Map<EntityId, MoveEdge>();
+      for (const item of moveEdges) {
+        if (item) edgeById.set(item.id, item);
+      }
       const masteryByMoveId = new Map(
         allMasteries.map((item) => [item.repertoireMoveId, item]),
       );
