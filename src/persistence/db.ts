@@ -38,6 +38,11 @@ export const V2_STORES = {
   localBackups: '&id, createdAt, reason',
 } as const;
 
+export const V3_STORES = {
+  ...V2_STORES,
+  repertoireMoveMastery: '&id, &repertoireMoveId, lastAttemptedAt, nextReviewAt',
+} as const;
+
 export class ChessTrainingDatabase extends Dexie {
   learnerProfiles!: Table<LearnerProfile, string>;
   repertoires!: Table<Repertoire, string>;
@@ -55,5 +60,6 @@ export class ChessTrainingDatabase extends Dexie {
     super(name);
     this.version(1).stores(V1_STORES);
     this.version(2).stores(V2_STORES);
+    this.version(3).stores(V3_STORES);
   }
 }
