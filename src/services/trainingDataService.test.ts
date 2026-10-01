@@ -89,7 +89,7 @@ test('summary reports multiple repertoires sharing canonical graph records', asy
   expect(summary.counts.repertoireMoveMastery).toBe(1);
   expect(summary.counts.attempts).toBe(1);
   expect(summary.lastActivityAt).toBe('2026-09-17T01:02:03.000Z');
-  expect(summary.schemaVersion).toBe(2);
+  expect(summary.schemaVersion).toBe(3);
 
   const aSummary = summary.repertoires.find((item) => item.id === a.id);
   const bSummary = summary.repertoires.find((item) => item.id === b.id);
