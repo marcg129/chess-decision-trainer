@@ -80,7 +80,7 @@ test('reset clears user data, keeps schema, and recreates one clean local learne
   expect(await db.repertoires.count()).toBe(0);
   expect(await db.positions.count()).toBe(0);
   expect(await db.trainingAttempts.count()).toBe(0);
-  expect(db.verno).toBe(2);
+  expect(db.verno).toBe(3);
   expect(db.tables.some((table) => table.name === 'localBackups')).toBe(true);
   await db.delete();
 });
