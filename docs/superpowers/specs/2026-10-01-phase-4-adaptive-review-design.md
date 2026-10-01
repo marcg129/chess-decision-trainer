@@ -220,13 +220,14 @@ type FsrsSchedulingEnvelopeV1 = {
     scheduledDays: number;
     reps: number;
     lapses: number;
+    learningSteps: number;
     state: 'new' | 'learning' | 'review' | 'relearning';
     lastReviewAt: string | null;
   };
 };
 ```
 
-The adapter maps this structure to and from ts-fsrs.
+The adapter maps this structure to and from ts-fsrs. `learningSteps` preserves the library card's current short-term learning-step index so Learning/Relearning state survives reloads exactly.
 
 Unknown future scheduling schema versions must fail validation explicitly rather than being silently interpreted.
 
