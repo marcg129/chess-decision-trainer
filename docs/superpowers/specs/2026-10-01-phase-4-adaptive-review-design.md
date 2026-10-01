@@ -121,7 +121,9 @@ Easy is intentionally conservative. Initial policy requires:
 - first legal response correct,
 - no hint,
 - decision time at or below 3 seconds,
-- sufficient prior successful review history.
+- at least two prior scheduling-applied Review Due attempts for that target.
+
+The personal historical speed baseline uses the preferred move's existing repertoire-move average before the current attempt. Practice Line and Quick Recall therefore may improve the baseline signal without advancing the FSRS schedule.
 
 All numeric thresholds live in one policy module and are not duplicated through UI or engine code.
 
@@ -230,13 +232,11 @@ Unknown future scheduling schema versions must fail validation explicitly rather
 
 ## Mastery state and score
 
-Existing `MasteryState` and `score` remain application-level descriptive concepts.
+Existing `MasteryState` and `score` remain application-level descriptive fields and stay separate from FSRS internals.
 
-Phase 4 should make them meaningful but keep them separate from raw FSRS internals.
+Phase 4 does not introduce a new mastery-score formula or new UI based on those fields. Existing behavior remains compatible. Long-term review state is represented by `nextReviewAt` and the versioned scheduling envelope.
 
-Initial mapping should be deterministic and derived from review state plus observed performance. The exact score formula belongs in one mastery-policy module and is covered by tests.
-
-FSRS stability or difficulty must not be exposed directly as the application's mastery score.
+This avoids conflating FSRS stability/difficulty with an application-defined score before the product has a concrete use for that score.
 
 ## Persistence model
 
@@ -278,6 +278,7 @@ type ReviewAttemptMetadata = {
   rating: 'again' | 'hard' | 'good' | 'easy';
   kind: 'scheduled' | 'relearning';
   schedulingApplied: boolean;
+  newCard: boolean;
 };
 ```
 
@@ -287,7 +288,8 @@ Important semantics:
 - `review.targetRepertoireMoveId` identifies the preferred move whose memory was being tested.
 - accepted alternative: actual move ID differs from review target ID,
 - failed scheduled recall: target exists even though the first response did not match any accepted move,
-- relearning attempts set `schedulingApplied: false`.
+- relearning attempts set `schedulingApplied: false`,
+- `newCard` is true only for the first scheduling-applied introduction of a previously unscheduled target.
 
 ### Atomic scheduled attempt write
 
@@ -300,10 +302,11 @@ One transaction must:
 3. record the attempt,
 4. update shared position mastery,
 5. update actual repertoire-move mastery where appropriate,
-6. update the preferred target's scheduling state exactly once when `schedulingApplied` is true,
-7. preserve all-or-nothing behavior.
+6. verify the caller's expected prior scheduling revision before changing an already-scheduled target,
+7. update the preferred target's scheduling state exactly once when `schedulingApplied` is true,
+8. preserve all-or-nothing behavior.
 
-Retrying the same stable attempt ID must return the existing attempt and must not advance the FSRS card a second time.
+Retrying the same stable attempt ID must return the existing attempt and must not advance the FSRS card a second time. A different attempt based on stale scheduling state must fail with a recoverable conflict rather than overwrite a newer schedule.
 
 Practice Line and Quick Recall continue through the ordinary attempt path and do not mutate scheduling state.
 
@@ -335,7 +338,7 @@ Restore remains replace-atomic and still creates the existing pre-restore recove
 
 The default global allowance is 10 new cards per local calendar day.
 
-The system must determine how many new scheduled introductions have already occurred during the current browser-local calendar day from durable Review Due attempt metadata. Reloading or restarting the browser must not reset the allowance.
+The system determines how many new scheduled introductions have already occurred during the current browser-local calendar day from durable Review Due attempts where `review.newCard === true`. Reloading or restarting the browser must not reset the allowance.
 
 Only first scheduled introductions count against the allowance.
 
@@ -425,7 +428,7 @@ A failed relearning prompt may remain unresolved at session end; Phase 4 does no
 
 ## Session completion
 
-Review Due sessions store normal `TrainingSession` records using mode `opening:review-due`.
+Review Due sessions store normal `TrainingSession` records using mode `opening:review-due`. Global and filtered Review Due sessions leave `TrainingSession.repertoireId` unset so one session may legally contain attempts from multiple repertoires; the per-attempt repertoire ID remains authoritative.
 
 Session summary includes at minimum:
 
