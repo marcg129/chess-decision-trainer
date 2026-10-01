@@ -1,3 +1,4 @@
+import type { ReviewSettings } from '../review/types';
 import type {
   EntityId,
   LearnerProfile,
@@ -48,6 +49,28 @@ export type RecordAttemptInput = Omit<
   'id' | 'masteryBefore' | 'masteryAfter'
 > & { attemptId?: EntityId };
 
+export type ReviewMoveChoice = {
+  repertoireMove: RepertoireMove;
+  moveEdge: MoveEdge;
+  toPosition: Position;
+};
+
+export type ReviewInventoryTarget = {
+  repertoire: Repertoire;
+  position: Position;
+  preferred: ReviewMoveChoice;
+  alternatives: ReviewMoveChoice[];
+  mastery?: RepertoireMoveMastery;
+  depth: number;
+  sourceOrder: number;
+  priorScheduledReviews: number;
+};
+
+export type ReviewInventory = {
+  due: ReviewInventoryTarget[];
+  newCandidates: ReviewInventoryTarget[];
+};
+
 export interface TrainingRepository {
   ensureLocalLearner(displayName?: string): Promise<LearnerProfile>;
   saveRepertoire(repertoire: Repertoire): Promise<void>;
@@ -68,6 +91,12 @@ export interface TrainingRepository {
   getRepertoireMoveMastery(
     repertoireMoveId: EntityId,
   ): Promise<RepertoireMoveMastery | undefined>;
+  updateReviewSettings(settings: ReviewSettings): Promise<LearnerProfile>;
+  loadReviewInventory(input: {
+    dueThroughIso: string;
+    filterRepertoireId?: EntityId;
+  }): Promise<ReviewInventory>;
+  countNewReviewIntroductions(startIso: string, endIso: string): Promise<number>;
   recordAttempt(input: RecordAttemptInput): Promise<TrainingAttempt>;
   createSession(session: TrainingSession): Promise<void>;
 }
