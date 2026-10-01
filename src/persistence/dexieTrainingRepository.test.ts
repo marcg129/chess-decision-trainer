@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
 import { Chess } from 'chess.js';
-import { ChessTrainingDatabase, V1_STORES } from './db';
+import { ChessTrainingDatabase, V1_STORES, V2_STORES } from './db';
 import { DexieTrainingRepository } from './dexieTrainingRepository';
 import { createId, type Repertoire } from '../training/types';
 
@@ -219,10 +219,11 @@ test('loads a repertoire-scoped training snapshot and completes sessions in plac
   await db.delete();
 });
 
-test('version 2 migration preserves version 1 learner and repertoire rows', async () => {
+test('version 3 migration preserves version 2 rows and adds the review due index', async () => {
   const name = `migration-${crypto.randomUUID()}`;
   const raw = new Dexie(name);
   raw.version(1).stores(V1_STORES);
+  raw.version(2).stores(V2_STORES);
   const learnerId = createId();
   const repertoireId = createId();
   const now = new Date().toISOString();
@@ -248,7 +249,11 @@ test('version 2 migration preserves version 1 learner and repertoire rows', asyn
   await upgraded.open();
   expect((await upgraded.learnerProfiles.get(learnerId))?.displayName).toBe('Legacy learner');
   expect((await upgraded.repertoires.get(repertoireId))?.name).toBe('Legacy repertoire');
-  expect(upgraded.verno).toBe(2);
+  expect(upgraded.verno).toBe(3);
   expect(upgraded.tables.some((table) => table.name === 'localBackups')).toBe(true);
+  expect(
+    upgraded.repertoireMoveMastery.schema.indexes
+      .some((index) => index.name === 'nextReviewAt'),
+  ).toBe(true);
   await upgraded.delete();
 });
