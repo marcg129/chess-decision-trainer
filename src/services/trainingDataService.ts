@@ -3,7 +3,11 @@ import type {
   TrainingAdminRepository,
   TrainingRepository,
 } from '../training/repositories';
-import type { TrainingBackupV1, TrainingDataSummary } from '../training/types';
+import type {
+  TrainingBackup,
+  TrainingBackupV2,
+  TrainingDataSummary,
+} from '../training/types';
 
 export class TrainingDataService {
   constructor(
@@ -20,20 +24,20 @@ export class TrainingDataService {
     return this.admin.getSummary();
   }
 
-  exportBackup(): Promise<TrainingBackupV1> {
+  exportBackup(): Promise<TrainingBackupV2> {
     return this.admin.exportBackup();
   }
 
-  validateBackup(input: unknown): TrainingBackupV1 {
+  validateBackup(input: unknown): TrainingBackup {
     return parseAndValidateBackup(input);
   }
 
-  async restoreBackup(backup: TrainingBackupV1): Promise<TrainingDataSummary> {
+  async restoreBackup(backup: TrainingBackup): Promise<TrainingDataSummary> {
     await this.admin.restoreBackup(backup);
     return this.admin.getSummary();
   }
 
-  getPreRestoreBackup(): Promise<TrainingBackupV1 | null> {
+  getPreRestoreBackup(): Promise<TrainingBackup | null> {
     return this.admin.getLatestPreRestoreBackup();
   }
 
