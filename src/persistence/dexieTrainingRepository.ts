@@ -1,3 +1,4 @@
+import { parseFsrsSchedulingEnvelope } from '../review/fsrsAdapter';
 import { normalizeReviewSettings } from '../review/settings';
 import type { ReviewSettings } from '../review/types';
 import { InvalidChessEdgeError } from '../training/errors';
@@ -9,6 +10,7 @@ import {
 import type {
   CreateRepertoireImportInput,
   RecordAttemptInput,
+  RecordScheduledAttemptInput,
   RepertoireTrainingSnapshot,
   RepertoireTransitionInput,
   ReviewInventory,
@@ -30,6 +32,7 @@ import type {
 import { createId } from '../training/types';
 import { ChessTrainingDatabase } from './db';
 import {
+  ReviewScheduleConflictError,
   StorageQuotaError,
   StorageUnavailableError,
   TransactionError,
@@ -50,6 +53,7 @@ function sideToMoveFromFen(fen: string): 'w' | 'b' {
 function translatePersistenceError(error: unknown): never {
   if (error instanceof InvalidChessEdgeError) throw error;
   if (
+    error instanceof ReviewScheduleConflictError ||
     error instanceof StorageQuotaError ||
     error instanceof StorageUnavailableError ||
     error instanceof TransactionError
@@ -603,6 +607,261 @@ export class DexieTrainingRepository {
           await this.db.positionMastery.put(nextPosition);
           if (nextRepertoireMove) {
             await this.db.repertoireMoveMastery.put(nextRepertoireMove);
+          }
+
+          return attempt;
+        },
+      );
+    } catch (error) {
+      translatePersistenceError(error);
+    }
+  }
+
+
+  async recordScheduledAttempt(
+    input: RecordScheduledAttemptInput,
+  ): Promise<TrainingAttempt> {
+    const {
+      attemptId,
+      review,
+      expectedTargetUpdatedAt,
+      scheduledReview,
+      ...attemptInput
+    } = input;
+
+    if (!Number.isFinite(attemptInput.decisionTimeMs) || attemptInput.decisionTimeMs < 0) {
+      throw new TransactionError('Decision time must be a non-negative finite number.');
+    }
+    if (!Number.isInteger(attemptInput.hintCount) || attemptInput.hintCount < 0) {
+      throw new TransactionError('Hint count must be a non-negative integer.');
+    }
+
+    try {
+      return await this.db.transaction(
+        'rw',
+        [
+          this.db.trainingAttempts,
+          this.db.positionMastery,
+          this.db.repertoireMoveMastery,
+          this.db.trainingSessions,
+          this.db.repertoires,
+          this.db.positions,
+          this.db.repertoireMoves,
+          this.db.moveEdges,
+        ],
+        async () => {
+          const existing = await this.db.trainingAttempts.get(attemptId);
+          if (existing) return existing;
+
+          if (review.schedulingApplied && !scheduledReview) {
+            throw new TransactionError(
+              'A scheduling-applied review requires a next schedule.',
+            );
+          }
+          if (!review.schedulingApplied && scheduledReview) {
+            throw new TransactionError(
+              'A non-scheduling review must not provide a next schedule.',
+            );
+          }
+          if (
+            (review.kind === 'scheduled' && !review.schedulingApplied)
+            || (review.kind === 'relearning' && review.schedulingApplied)
+          ) {
+            throw new TransactionError('Review attempt kind does not match scheduling behavior.');
+          }
+
+          const normalizedSchedule = scheduledReview
+            ? {
+                schedulingData: parseFsrsSchedulingEnvelope(
+                  scheduledReview.schedulingData,
+                ),
+                nextReviewAt: scheduledReview.nextReviewAt,
+              }
+            : null;
+          if (
+            normalizedSchedule
+            && normalizedSchedule.nextReviewAt
+              !== normalizedSchedule.schedulingData.card.due
+          ) {
+            throw new TransactionError(
+              'Scheduled review due time does not match its scheduling data.',
+            );
+          }
+
+          const repertoire = await this.db.repertoires.get(attemptInput.repertoireId);
+          if (!repertoire) {
+            throw new TransactionError('Attempt references a missing repertoire.');
+          }
+
+          const position = await this.db.positions.get(attemptInput.positionId);
+          if (!position) {
+            throw new TransactionError('Attempt references a missing position.');
+          }
+
+          if (attemptInput.sessionId) {
+            const session = await this.db.trainingSessions.get(attemptInput.sessionId);
+            if (!session) {
+              throw new TransactionError('Attempt references a missing training session.');
+            }
+            if (session.repertoireId && session.repertoireId !== attemptInput.repertoireId) {
+              throw new TransactionError(
+                'Training session belongs to a different repertoire.',
+              );
+            }
+          }
+
+          const targetMove = await this.db.repertoireMoves.get(
+            review.targetRepertoireMoveId,
+          );
+          if (!targetMove) {
+            throw new TransactionError('Review target references a missing repertoire move.');
+          }
+          if (targetMove.repertoireId !== attemptInput.repertoireId) {
+            throw new TransactionError('Review target belongs to a different repertoire.');
+          }
+          if (!targetMove.preferred || targetMove.role === 'opponent') {
+            throw new TransactionError('Review target must be the preferred learner move.');
+          }
+          const targetEdge = await this.db.moveEdges.get(targetMove.moveEdgeId);
+          if (!targetEdge || targetEdge.fromPositionId !== attemptInput.positionId) {
+            throw new TransactionError(
+              'Review target does not originate from the attempted position.',
+            );
+          }
+
+          const currentTargetMastery = await this.db.repertoireMoveMastery
+            .where('repertoireMoveId')
+            .equals(review.targetRepertoireMoveId)
+            .first();
+
+          if (review.schedulingApplied) {
+            const actualRevision = currentTargetMastery?.updatedAt ?? null;
+            if (actualRevision !== expectedTargetUpdatedAt) {
+              throw new ReviewScheduleConflictError();
+            }
+          }
+
+          let actualRepertoireMove: RepertoireMove | undefined;
+          if (attemptInput.repertoireMoveId) {
+            actualRepertoireMove = await this.db.repertoireMoves.get(
+              attemptInput.repertoireMoveId,
+            );
+            if (!actualRepertoireMove) {
+              throw new TransactionError('Attempt references a missing repertoire move.');
+            }
+            if (actualRepertoireMove.repertoireId !== attemptInput.repertoireId) {
+              throw new TransactionError('Repertoire move belongs to a different repertoire.');
+            }
+            const actualEdge = await this.db.moveEdges.get(
+              actualRepertoireMove.moveEdgeId,
+            );
+            if (!actualEdge || actualEdge.fromPositionId !== attemptInput.positionId) {
+              throw new TransactionError(
+                'Repertoire move does not originate from the attempted position.',
+              );
+            }
+          }
+
+          const currentPositionMastery = await this.db.positionMastery
+            .where('positionId')
+            .equals(attemptInput.positionId)
+            .first();
+          const currentActualMoveMastery = attemptInput.repertoireMoveId
+            ? await this.db.repertoireMoveMastery
+                .where('repertoireMoveId')
+                .equals(attemptInput.repertoireMoveId)
+                .first()
+            : undefined;
+
+          const outcome = {
+            correct: attemptInput.correct,
+            decisionTimeMs: attemptInput.decisionTimeMs,
+          };
+          const nextPosition = nextPositionMastery(
+            currentPositionMastery,
+            attemptInput.positionId,
+            outcome,
+            attemptInput.timestamp,
+          );
+          const nextActualMove = attemptInput.repertoireMoveId
+            ? nextRepertoireMoveMastery(
+                currentActualMoveMastery,
+                attemptInput.repertoireMoveId,
+                outcome,
+                attemptInput.timestamp,
+              )
+            : undefined;
+
+          const masteryBefore = {
+            positionState: currentPositionMastery?.state ?? ('new' as const),
+            positionScore: currentPositionMastery?.score ?? 0,
+            ...(attemptInput.repertoireMoveId
+              ? {
+                  repertoireMoveState:
+                    currentActualMoveMastery?.state ?? ('new' as const),
+                  repertoireMoveScore: currentActualMoveMastery?.score ?? 0,
+                }
+              : {}),
+          };
+          const masteryAfter = {
+            positionState: nextPosition.state,
+            positionScore: nextPosition.score,
+            ...(nextActualMove
+              ? {
+                  repertoireMoveState: nextActualMove.state,
+                  repertoireMoveScore: nextActualMove.score,
+                }
+              : {}),
+          };
+
+          const attempt: TrainingAttempt = {
+            ...attemptInput,
+            id: attemptId,
+            review,
+            masteryBefore,
+            masteryAfter,
+          };
+
+          await this.db.trainingAttempts.add(attempt);
+          await this.db.positionMastery.put(nextPosition);
+
+          if (review.schedulingApplied) {
+            const baseTarget = (
+              nextActualMove
+              && attemptInput.repertoireMoveId === review.targetRepertoireMoveId
+            )
+              ? nextActualMove
+              : currentTargetMastery ?? {
+                  id: createId(),
+                  repertoireMoveId: review.targetRepertoireMoveId,
+                  attempts: 0,
+                  correct: 0,
+                  incorrect: 0,
+                  streak: 0,
+                  averageDecisionTimeMs: null,
+                  lastAttemptedAt: null,
+                  state: 'new' as const,
+                  score: 0,
+                  nextReviewAt: null,
+                  schedulingData: null,
+                  updatedAt: attemptInput.timestamp,
+                };
+
+            if (
+              nextActualMove
+              && attemptInput.repertoireMoveId !== review.targetRepertoireMoveId
+            ) {
+              await this.db.repertoireMoveMastery.put(nextActualMove);
+            }
+
+            await this.db.repertoireMoveMastery.put({
+              ...baseTarget,
+              nextReviewAt: normalizedSchedule!.nextReviewAt,
+              schedulingData: normalizedSchedule!.schedulingData,
+              updatedAt: attemptInput.timestamp,
+            });
+          } else if (nextActualMove) {
+            await this.db.repertoireMoveMastery.put(nextActualMove);
           }
 
           return attempt;
