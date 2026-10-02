@@ -1,4 +1,5 @@
-import type { ReviewSettings } from '../review/types';
+import type { ScheduledReviewResult } from '../review/fsrsAdapter';
+import type { ReviewAttemptMetadata, ReviewSettings } from '../review/types';
 import type {
   EntityId,
   LearnerProfile,
@@ -49,6 +50,16 @@ export type RecordAttemptInput = Omit<
   'id' | 'masteryBefore' | 'masteryAfter'
 > & { attemptId?: EntityId };
 
+export type RecordScheduledAttemptInput = Omit<
+  RecordAttemptInput,
+  'attemptId' | 'review'
+> & {
+  attemptId: EntityId;
+  review: ReviewAttemptMetadata;
+  expectedTargetUpdatedAt: string | null;
+  scheduledReview: ScheduledReviewResult | null;
+};
+
 export type ReviewMoveChoice = {
   repertoireMove: RepertoireMove;
   moveEdge: MoveEdge;
@@ -98,6 +109,7 @@ export interface TrainingRepository {
   }): Promise<ReviewInventory>;
   countNewReviewIntroductions(startIso: string, endIso: string): Promise<number>;
   recordAttempt(input: RecordAttemptInput): Promise<TrainingAttempt>;
+  recordScheduledAttempt(input: RecordScheduledAttemptInput): Promise<TrainingAttempt>;
   createSession(session: TrainingSession): Promise<void>;
 }
 
