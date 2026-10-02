@@ -1,5 +1,11 @@
 import type { Table } from 'dexie';
-import { createId, type LearnerProfile, type TrainingBackupV1 } from '../training/types';
+import { normalizeReviewSettings } from '../review/settings';
+import {
+  createId,
+  type LearnerProfile,
+  type TrainingBackup,
+  type TrainingBackupV2,
+} from '../training/types';
 import { parseAndValidateBackup } from './backupSchema';
 import { ChessTrainingDatabase } from './db';
 import {
@@ -36,14 +42,17 @@ async function bulkAddIfAny<T>(table: Table<T, string>, records: T[]): Promise<v
 
 export async function exportBackupData(
   db: ChessTrainingDatabase,
-): Promise<TrainingBackupV1> {
+): Promise<TrainingBackupV2> {
   return db.transaction('r', userTables(db), async () => ({
     format: 'chess-decision-trainer',
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     schemaVersion: db.verno,
     data: {
-      learnerProfiles: await db.learnerProfiles.toArray(),
+      learnerProfiles: (await db.learnerProfiles.toArray()).map((learner) => ({
+        ...learner,
+        reviewSettings: normalizeReviewSettings(learner.reviewSettings),
+      })),
       repertoires: await db.repertoires.toArray(),
       positions: await db.positions.toArray(),
       moveEdges: await db.moveEdges.toArray(),
@@ -63,7 +72,7 @@ async function clearUserTables(db: ChessTrainingDatabase): Promise<void> {
 
 async function addBackupRows(
   db: ChessTrainingDatabase,
-  backup: TrainingBackupV1,
+  backup: TrainingBackup,
 ): Promise<void> {
   const data = backup.data;
   await bulkAddIfAny(db.learnerProfiles, data.learnerProfiles);
@@ -80,7 +89,7 @@ async function addBackupRows(
 
 async function verifyRestoredCounts(
   db: ChessTrainingDatabase,
-  backup: TrainingBackupV1,
+  backup: TrainingBackup,
 ): Promise<void> {
   const data = backup.data;
   const actual = await Promise.all([
@@ -114,7 +123,7 @@ async function verifyRestoredCounts(
 
 export async function restoreBackupData(
   db: ChessTrainingDatabase,
-  backup: TrainingBackupV1,
+  backup: TrainingBackup,
   hooks: RestoreHooks = {},
 ): Promise<void> {
   const validated = parseAndValidateBackup(backup);
@@ -148,7 +157,7 @@ export async function restoreBackupData(
 
 export async function getLatestPreRestoreBackupData(
   db: ChessTrainingDatabase,
-): Promise<TrainingBackupV1 | null> {
+): Promise<TrainingBackup | null> {
   const record = await db.localBackups.orderBy('createdAt').reverse().first();
   return record?.backup ?? null;
 }
@@ -160,6 +169,7 @@ export async function resetTrainingData(
   const learner: LearnerProfile = {
     id: createId(),
     displayName: 'Local learner',
+    reviewSettings: normalizeReviewSettings(),
     createdAt: now,
     updatedAt: now,
   };
