@@ -1,6 +1,6 @@
 import { Chess } from 'chess.js';
 import { deriveTransition } from '../training/graph';
-import type { TrainingBackupV1 } from '../training/types';
+import type { TrainingBackup, TrainingBackupV1 } from '../training/types';
 import type { ChessTrainingDatabase } from './db';
 
 export function testId(value: number): string {
@@ -110,13 +110,13 @@ export function makeValidBackup(name = 'Test repertoire'): TrainingBackupV1 {
   };
 }
 
-export function cloneBackup(backup: TrainingBackupV1): TrainingBackupV1 {
+export function cloneBackup<T extends TrainingBackup>(backup: T): T {
   return structuredClone(backup);
 }
 
 export async function seedBackup(
   db: ChessTrainingDatabase,
-  backup: TrainingBackupV1,
+  backup: TrainingBackup,
 ): Promise<void> {
   await db.transaction(
     'rw',
