@@ -168,23 +168,35 @@ export type TrainingDataSummary = {
   schemaVersion: number;
 };
 
+export type TrainingBackupData = {
+  learnerProfiles: LearnerProfile[];
+  repertoires: Repertoire[];
+  positions: Position[];
+  moveEdges: MoveEdge[];
+  repertoirePositions: RepertoirePosition[];
+  repertoireMoves: RepertoireMove[];
+  positionMastery: PositionMastery[];
+  repertoireMoveMastery: RepertoireMoveMastery[];
+  trainingSessions: TrainingSession[];
+  trainingAttempts: TrainingAttempt[];
+};
+
 export type TrainingBackupV1 = {
   format: 'chess-decision-trainer';
   version: 1;
   exportedAt: IsoTimestamp;
   schemaVersion: number;
-  data: {
-    learnerProfiles: LearnerProfile[];
-    repertoires: Repertoire[];
-    positions: Position[];
-    moveEdges: MoveEdge[];
-    repertoirePositions: RepertoirePosition[];
-    repertoireMoves: RepertoireMove[];
-    positionMastery: PositionMastery[];
-    repertoireMoveMastery: RepertoireMoveMastery[];
-    trainingSessions: TrainingSession[];
-    trainingAttempts: TrainingAttempt[];
-  };
+  data: TrainingBackupData;
 };
+
+export type TrainingBackupV2 = {
+  format: 'chess-decision-trainer';
+  version: 2;
+  exportedAt: IsoTimestamp;
+  schemaVersion: number;
+  data: TrainingBackupData;
+};
+
+export type TrainingBackup = TrainingBackupV1 | TrainingBackupV2;
 
 export const createId = (): EntityId => crypto.randomUUID();
