@@ -60,3 +60,10 @@ export class ResetError extends Error {
     this.name = 'ResetError';
   }
 }
+
+export class ReviewScheduleConflictError extends Error {
+  constructor(message = 'The review schedule changed before this attempt could be saved.') {
+    super(message);
+    this.name = 'ReviewScheduleConflictError';
+  }
+}
