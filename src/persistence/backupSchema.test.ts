@@ -17,7 +17,7 @@ test('rejects wrong format, unsupported version, and malformed UUIDs', () => {
   const wrongFormat = { ...makeValidBackup(), format: 'other-app' };
   expect(() => parseAndValidateBackup(wrongFormat)).toThrow(InvalidBackupError);
 
-  const unsupported = { ...makeValidBackup(), version: 2 };
+  const unsupported = { ...makeValidBackup(), version: 3 };
   expect(() => parseAndValidateBackup(unsupported)).toThrow(
     UnsupportedBackupVersionError,
   );
