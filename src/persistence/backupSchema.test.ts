@@ -162,10 +162,11 @@ test('rejects V2 review metadata that targets a missing repertoire move', () => 
 
 test('rejects V2 mastery with malformed or unsupported FSRS scheduling data', () => {
   const malformed = makeValidV2Backup();
-  malformed.data.repertoireMoveMastery[0].schedulingData = {
-    ...malformed.data.repertoireMoveMastery[0].schedulingData,
-    schedulingSchemaVersion: 9,
-  };
+  (
+    malformed.data.repertoireMoveMastery[0].schedulingData as {
+      schedulingSchemaVersion: number;
+    }
+  ).schedulingSchemaVersion = 9;
   expect(() => parseAndValidateBackup(malformed)).toThrow(/scheduling|schema/i);
 });
 
