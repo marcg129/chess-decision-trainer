@@ -94,7 +94,7 @@ test('restored training data survives reload and exports through the public UI',
 
   const exported = JSON.parse(await readFile(path!, 'utf8')) as typeof backup;
   expect(exported.format).toBe('chess-decision-trainer');
-  expect(exported.version).toBe(1);
+  expect(exported.version).toBe(2);
   expect(exported.data.repertoires.some((item) => item.name === 'Persistence Smoke Repertoire')).toBe(true);
 });
 
