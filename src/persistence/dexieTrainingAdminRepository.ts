@@ -1,7 +1,8 @@
 import type {
   LearnerProfile,
   RepertoireSummary,
-  TrainingBackupV1,
+  TrainingBackup,
+  TrainingBackupV2,
   TrainingDataSummary,
 } from '../training/types';
 import {
@@ -82,15 +83,15 @@ export class DexieTrainingAdminRepository {
     );
   }
 
-  exportBackup(): Promise<TrainingBackupV1> {
+  exportBackup(): Promise<TrainingBackupV2> {
     return exportBackupData(this.db);
   }
 
-  restoreBackup(backup: TrainingBackupV1): Promise<void> {
+  restoreBackup(backup: TrainingBackup): Promise<void> {
     return restoreBackupData(this.db, backup);
   }
 
-  getLatestPreRestoreBackup(): Promise<TrainingBackupV1 | null> {
+  getLatestPreRestoreBackup(): Promise<TrainingBackup | null> {
     return getLatestPreRestoreBackupData(this.db);
   }
 
