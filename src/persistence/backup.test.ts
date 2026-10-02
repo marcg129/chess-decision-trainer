@@ -1,4 +1,5 @@
 import 'fake-indexeddb/auto';
+import type { TrainingBackup } from '../training/types';
 import { ChessTrainingDatabase } from './db';
 import {
   exportBackupData,
@@ -11,7 +12,7 @@ import { FsrsScheduler } from '../review/fsrsAdapter';
 import { RestoreError } from './errors';
 import { cloneBackup, makeValidBackup, seedBackup, testId } from './backupTestUtils';
 
-function logicalBackup(backup: Awaited<ReturnType<typeof exportBackupData>>) {
+function logicalBackup(backup: TrainingBackup) {
   return { ...backup, exportedAt: '<ignored>' };
 }
 
