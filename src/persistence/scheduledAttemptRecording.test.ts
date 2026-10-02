@@ -263,9 +263,9 @@ describe('recordScheduledAttempt', () => {
       context.db.repertoireMoveMastery,
     );
     const putSpy = vi.spyOn(context.db.repertoireMoveMastery, 'put')
-      .mockImplementationOnce(async () => {
+      .mockImplementationOnce((() => {
         throw new Error('simulated schedule write failure');
-      })
+      }) as typeof context.db.repertoireMoveMastery.put)
       .mockImplementation(originalPut);
 
     await expect(context.repo.recordScheduledAttempt(inputFor(context))).rejects.toThrow(
