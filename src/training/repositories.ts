@@ -12,7 +12,8 @@ import type {
   RepertoireMoveRole,
   RepertoirePosition,
   TrainingAttempt,
-  TrainingBackupV1,
+  TrainingBackup,
+  TrainingBackupV2,
   TrainingDataSummary,
   TrainingMoveInput,
   TrainingSession,
@@ -115,8 +116,8 @@ export interface TrainingRepository {
 
 export interface TrainingAdminRepository {
   getSummary(): Promise<TrainingDataSummary>;
-  exportBackup(): Promise<TrainingBackupV1>;
-  restoreBackup(backup: TrainingBackupV1): Promise<void>;
-  getLatestPreRestoreBackup(): Promise<TrainingBackupV1 | null>;
+  exportBackup(): Promise<TrainingBackupV2>;
+  restoreBackup(backup: TrainingBackup): Promise<void>;
+  getLatestPreRestoreBackup(): Promise<TrainingBackup | null>;
   resetTrainingData(): Promise<LearnerProfile>;
 }
