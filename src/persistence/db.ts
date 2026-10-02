@@ -9,7 +9,7 @@ import type {
   RepertoireMoveMastery,
   RepertoirePosition,
   TrainingAttempt,
-  TrainingBackupV1,
+  TrainingBackup,
   TrainingSession,
 } from '../training/types';
 
@@ -17,7 +17,7 @@ export type LocalBackupRecord = {
   id: string;
   createdAt: string;
   reason: 'pre-restore';
-  backup: TrainingBackupV1;
+  backup: TrainingBackup;
 };
 
 export const V1_STORES = {
