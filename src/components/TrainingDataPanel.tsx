@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getBrowserTrainingDataService } from '../persistence/browserRepository';
 import type { TrainingDataService } from '../services/trainingDataService';
-import type { TrainingBackupV1, TrainingDataSummary } from '../training/types';
+import type { TrainingBackup, TrainingDataSummary } from '../training/types';
 import { readFileText } from '../utils/readFileText';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Training data operation failed.';
 }
 
-function backupCounts(backup: TrainingBackupV1) {
+function backupCounts(backup: TrainingBackup) {
   return {
     repertoires: backup.data.repertoires.length,
     positions: backup.data.positions.length,
@@ -16,7 +16,7 @@ function backupCounts(backup: TrainingBackupV1) {
   };
 }
 
-function downloadBackup(backup: TrainingBackupV1, prefix: string): void {
+function downloadBackup(backup: TrainingBackup, prefix: string): void {
   const blob = new Blob([JSON.stringify(backup, null, 2)], {
     type: 'application/json',
   });
@@ -31,8 +31,8 @@ function downloadBackup(backup: TrainingBackupV1, prefix: string): void {
 export function TrainingDataPanel({ service }: { service?: TrainingDataService }) {
   const client = useMemo(() => service ?? getBrowserTrainingDataService(), [service]);
   const [summary, setSummary] = useState<TrainingDataSummary | null>(null);
-  const [pendingBackup, setPendingBackup] = useState<TrainingBackupV1 | null>(null);
-  const [preRestoreBackup, setPreRestoreBackup] = useState<TrainingBackupV1 | null>(null);
+  const [pendingBackup, setPendingBackup] = useState<TrainingBackup | null>(null);
+  const [preRestoreBackup, setPreRestoreBackup] = useState<TrainingBackup | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
