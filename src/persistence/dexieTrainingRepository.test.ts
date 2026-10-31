@@ -268,7 +268,7 @@ test('creates exactly one learner when startup services initialize concurrently'
       repo.ensureLocalLearner('Local learner'),
     ]);
 
-    expect(new Set(learners.map((learner) => learner.id))).toHaveSize(1);
+    expect(new Set(learners.map((learner) => learner.id)).size).toBe(1);
     expect(await db.learnerProfiles.count()).toBe(1);
     await db.delete();
 });
