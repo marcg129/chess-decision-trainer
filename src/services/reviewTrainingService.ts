@@ -1,3 +1,4 @@
+import { ReviewTrainingEngine } from '../review/engine';
 import { buildReviewQueue, type ReviewSessionPlan } from '../review/queue';
 import { normalizeReviewSettings } from '../review/settings';
 import type { ReviewSettings } from '../review/types';
@@ -13,6 +14,9 @@ type ReviewRepository = Pick<
   | 'loadReviewInventory'
   | 'countNewReviewIntroductions'
   | 'updateReviewSettings'
+  | 'createSession'
+  | 'completeSession'
+  | 'recordScheduledAttempt'
 >;
 
 export type ReviewOverview = {
@@ -79,6 +83,19 @@ export class ReviewTrainingService {
     const normalized = normalizeReviewSettings(settings);
     const learner = await this.training.updateReviewSettings(normalized);
     return normalizeReviewSettings(learner.reviewSettings);
+  }
+
+  async startSession(input: {
+    repertoireId?: EntityId;
+  } = {}): Promise<ReviewTrainingEngine> {
+    const plan = await this.createSessionPlan(input);
+    if (plan.cards.length === 0) {
+      throw new Error('No Review Due cards are available.');
+    }
+    return ReviewTrainingEngine.start({
+      plan,
+      repository: this.training,
+    });
   }
 
   async createSessionPlan(input: {
