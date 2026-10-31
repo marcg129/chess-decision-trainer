@@ -226,4 +226,45 @@ describe('OpeningTrainingHome', () => {
     expect(updateSettings).toHaveBeenCalledTimes(1);
   });
 
+
+  it('refreshes current-day Review Due capacity immediately after saving settings', async () => {
+    const getOverview = vi.fn()
+      .mockResolvedValueOnce({
+        dueCount: 0,
+        newAvailable: 3,
+        settings: { newItemsPerDay: 10, batchSize: 15 },
+      })
+      .mockResolvedValueOnce({
+        dueCount: 0,
+        newAvailable: 0,
+        settings: { newItemsPerDay: 0, batchSize: 15 },
+      });
+    const updateSettings = vi.fn().mockResolvedValue({
+      newItemsPerDay: 0,
+      batchSize: 15,
+    });
+    const reviewService = fakeReviewService({ getOverview, updateSettings });
+
+    render(
+      <OpeningTrainingHome
+        service={fakeService()}
+        reviewService={reviewService}
+        onLaunch={vi.fn()}
+        onReview={vi.fn()}
+        onImport={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('0 due · 3 new available')).toBeInTheDocument();
+
+    const newItems = screen.getByLabelText(/new items per day/i);
+    await userEvent.clear(newItems);
+    await userEvent.type(newItems, '0');
+    await userEvent.click(screen.getByRole('button', { name: /save review settings/i }));
+
+    await waitFor(() => expect(getOverview).toHaveBeenCalledTimes(2));
+    expect(screen.getByText('0 due · 0 new available')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^review due$/i })).toBeDisabled();
+  });
+
 });
