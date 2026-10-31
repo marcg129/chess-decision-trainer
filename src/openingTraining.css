@@ -110,6 +110,71 @@
   color: #9caa94;
 }
 
+
+.opening-home__review {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid #465042;
+  border-radius: 8px;
+  background: #282c26;
+}
+
+.opening-home__review-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.opening-home__review-heading h3 {
+  margin: 0;
+}
+
+.opening-home__review-heading > strong {
+  color: #d9e6d3;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.opening-home__review > label,
+.opening-home__review-settings label {
+  display: grid;
+  gap: 0.35rem;
+  color: #d9ddd5;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.opening-home__review select,
+.opening-home__review input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #43473f;
+  border-radius: 7px;
+  padding: 0.62rem 0.7rem;
+  color: #f4f4f2;
+  background: #1d1f1c;
+  font: inherit;
+}
+
+.opening-home__review-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.review-trainer__summary {
+  display: grid;
+  gap: 0.35rem;
+  color: #b7bdb2;
+}
+
+.review-trainer__summary strong {
+  color: #f4f4f2;
+}
+
 .opening-home__actions,
 .pgn-import__actions,
 .opening-trainer__actions {
@@ -394,6 +459,15 @@
 
   .opening-home__repertoires,
   .pgn-import__counts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .opening-home__review-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .opening-home__review-settings {
     grid-template-columns: minmax(0, 1fr);
   }
 
