@@ -141,14 +141,16 @@ export function OpeningTrainingHome({
     setSettingsBusy(true);
     setError(null);
     try {
-      const settings = await reviewClient.updateSettings({
+      await reviewClient.updateSettings({
         newItemsPerDay: parsedNewItems,
         batchSize: parsedBatchSize,
       });
-      setNewItemsPerDay(String(settings.newItemsPerDay));
-      setBatchSize(String(settings.batchSize));
-      setReviewOverview((current) =>
-        current ? { ...current, settings } : current);
+      const overview = await reviewClient.getOverview(
+        reviewFilterId ? { repertoireId: reviewFilterId } : {},
+      );
+      setReviewOverview(overview);
+      setNewItemsPerDay(String(overview.settings.newItemsPerDay));
+      setBatchSize(String(overview.settings.batchSize));
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
