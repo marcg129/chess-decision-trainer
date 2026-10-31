@@ -60,7 +60,9 @@ describe('OpeningTrainingHome', () => {
     render(
       <OpeningTrainingHome
         service={service}
+        reviewService={fakeReviewService()}
         onLaunch={onLaunch}
+        onReview={vi.fn()}
         onImport={vi.fn()}
       />,
     );
@@ -87,7 +89,9 @@ describe('OpeningTrainingHome', () => {
     render(
       <OpeningTrainingHome
         service={service}
+        reviewService={fakeReviewService()}
         onLaunch={onLaunch}
+        onReview={vi.fn()}
         onImport={vi.fn()}
       />,
     );
@@ -109,7 +113,9 @@ describe('OpeningTrainingHome', () => {
     render(
       <OpeningTrainingHome
         service={fakeService()}
+        reviewService={fakeReviewService()}
         onLaunch={vi.fn()}
+        onReview={vi.fn()}
         onImport={onImport}
       />,
     );
