@@ -67,8 +67,8 @@ describe('OpeningTrainingHome', () => {
       />,
     );
 
-    expect(await screen.findByText('Italian repertoire')).toBeInTheDocument();
-    expect(screen.queryByText('Archived repertoire')).not.toBeInTheDocument();
+    expect(await screen.findByRole('radio', { name: /Italian repertoire/i })).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /Archived repertoire/i })).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: /practice line/i }));
     expect(onLaunch).toHaveBeenCalledWith({
@@ -95,7 +95,7 @@ describe('OpeningTrainingHome', () => {
         onImport={vi.fn()}
       />,
     );
-    await screen.findByText('Italian repertoire');
+    await screen.findByRole('radio', { name: /Italian repertoire/i });
 
     await userEvent.click(screen.getByRole('button', { name: /try demo/i }));
 
@@ -119,7 +119,7 @@ describe('OpeningTrainingHome', () => {
         onImport={onImport}
       />,
     );
-    await screen.findByText('Italian repertoire');
+    await screen.findByRole('radio', { name: /Italian repertoire/i });
 
     await userEvent.click(screen.getByRole('button', { name: /import pgn/i }));
     expect(onImport).toHaveBeenCalledTimes(1);
@@ -165,7 +165,7 @@ describe('OpeningTrainingHome', () => {
       />,
     );
 
-    await screen.findByText('Italian repertoire');
+    await screen.findByRole('radio', { name: /Italian repertoire/i });
     await userEvent.selectOptions(
       screen.getByLabelText(/review repertoire filter/i),
       '00000000-0000-4000-8000-000000000010',
