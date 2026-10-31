@@ -106,6 +106,9 @@ function setup(input: {
       ...currentLearner,
       reviewSettings: settings,
     })),
+    createSession: vi.fn().mockResolvedValue(undefined),
+    completeSession: vi.fn().mockResolvedValue(undefined),
+    recordScheduledAttempt: vi.fn(),
   };
   const now = input.now ?? new Date('2026-10-02T12:00:00.000Z');
   const service = new ReviewTrainingService(training, {
@@ -211,5 +214,20 @@ describe('ReviewTrainingService', () => {
       dueThroughIso: '2026-10-02T12:00:00.000Z',
       filterRepertoireId: 'rep-b',
     });
+  });
+
+  it('starts a review engine from the current global or filtered session plan', async () => {
+    const { service, training } = setup({
+      inventory: {
+        due: [target('due-a', 'rep-a', '2026-10-02T08:00:00.000Z')],
+        newCandidates: [],
+      },
+    });
+
+    const engine = await service.startSession();
+
+    expect(engine.state().repertoireId).toBe('rep-a');
+    expect(engine.state().phase).toBe('awaiting-move');
+    expect(training.createSession).toHaveBeenCalledTimes(1);
   });
 });
