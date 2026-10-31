@@ -76,21 +76,23 @@ export class DexieTrainingRepository {
 
   async ensureLocalLearner(displayName = 'Local learner'): Promise<LearnerProfile> {
     try {
-      const existing = await this.db.learnerProfiles.toArray();
-      if (existing.length > 1) {
-        throw new TransactionError('Phase 2 supports exactly one local learner profile.');
-      }
-      if (existing[0]) return existing[0];
+      return await this.db.transaction('rw', this.db.learnerProfiles, async () => {
+        const existing = await this.db.learnerProfiles.toArray();
+        if (existing.length > 1) {
+          throw new TransactionError('Phase 2 supports exactly one local learner profile.');
+        }
+        if (existing[0]) return existing[0];
 
-      const now = isoNow();
-      const learner: LearnerProfile = {
-        id: createId(),
-        displayName,
-        createdAt: now,
-        updatedAt: now,
-      };
-      await this.db.learnerProfiles.add(learner);
-      return learner;
+        const now = isoNow();
+        const learner: LearnerProfile = {
+          id: createId(),
+          displayName,
+          createdAt: now,
+          updatedAt: now,
+        };
+        await this.db.learnerProfiles.add(learner);
+        return learner;
+      });
     } catch (error) {
       translatePersistenceError(error);
     }
