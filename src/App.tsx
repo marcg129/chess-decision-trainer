@@ -4,16 +4,18 @@ import { OpeningTrainingPage } from './components/OpeningTrainingPage';
 import { PlaySurface } from './components/PlaySurface';
 import { TrainingDataPanel } from './components/TrainingDataPanel';
 import type { OpeningTrainingService } from './services/openingTrainingService';
+import type { ReviewTrainingService } from './services/reviewTrainingService';
 import type { TrainingDataService } from './services/trainingDataService';
 
 type AppProps = {
   initialFen?: string;
   trainingDataService?: TrainingDataService;
   openingTrainingService?: OpeningTrainingService;
+  reviewTrainingService?: ReviewTrainingService;
 };
 
 const sectionEyebrow: Record<AppSection, string> = {
-  train: 'Phase 3 · Opening training',
+  train: 'Phase 4 · Adaptive opening training',
   play: 'Phase 1 · Timed free play',
   data: 'Phase 2 · Local training data',
 };
@@ -22,6 +24,7 @@ export default function App({
   initialFen,
   trainingDataService,
   openingTrainingService,
+  reviewTrainingService,
 }: AppProps) {
   const [section, setSection] = useState<AppSection>('train');
 
@@ -43,7 +46,10 @@ export default function App({
         className="app-section"
       >
         {section === 'train' && (
-          <OpeningTrainingPage service={openingTrainingService} />
+          <OpeningTrainingPage
+            service={openingTrainingService}
+            reviewService={reviewTrainingService}
+          />
         )}
         {section === 'play' && <PlaySurface initialFen={initialFen} />}
         {section === 'data' && (
