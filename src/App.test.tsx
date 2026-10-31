@@ -262,6 +262,7 @@ test('opens on Train and preserves the Play and Data surfaces', async () => {
   expect(screen.getByLabelText('Chess game')).toBeInTheDocument();
   await user.click(screen.getByRole('tab', { name: 'Data' }));
   expect(await screen.findByRole('heading', { name: 'Training data' })).toBeInTheDocument();
+});
 
 test('composes the Phase 4 Review Due surface on Train', async () => {
   renderApp({ section: 'train' });
