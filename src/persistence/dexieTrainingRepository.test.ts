@@ -256,4 +256,19 @@ test('version 3 migration preserves version 2 rows and adds the review due index
       .some((index) => index.name === 'nextReviewAt'),
   ).toBe(true);
   await upgraded.delete();
+
+  it('creates exactly one learner when startup services initialize concurrently', async () => {
+    const db = new ChessTrainingDatabase(`concurrent-learner-${crypto.randomUUID()}`);
+    const repo = new DexieTrainingRepository(db);
+
+    const learners = await Promise.all([
+      repo.ensureLocalLearner('Local learner'),
+      repo.ensureLocalLearner('Local learner'),
+      repo.ensureLocalLearner('Local learner'),
+    ]);
+
+    expect(new Set(learners.map((learner) => learner.id))).toHaveSize(1);
+    expect(await db.learnerProfiles.count()).toBe(1);
+    await db.delete();
+  });
 });
