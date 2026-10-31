@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 import type { OpeningTrainingService } from './services/openingTrainingService';
+import type { ReviewTrainingService } from './services/reviewTrainingService';
 import type { TrainingDataService } from './services/trainingDataService';
 import type { TrainingDataSummary } from './training/types';
 
@@ -85,15 +86,28 @@ function fakeOpeningTrainingService(): OpeningTrainingService {
   } as unknown as OpeningTrainingService;
 }
 
+function fakeReviewTrainingService(): ReviewTrainingService {
+  return {
+    getOverview: vi.fn().mockResolvedValue({
+      dueCount: 3,
+      newAvailable: 2,
+      settings: { newItemsPerDay: 10, batchSize: 15 },
+    }),
+    updateSettings: vi.fn(),
+  } as unknown as ReviewTrainingService;
+}
+
 function renderApp({
   initialFen,
   trainingDataService = fakeTrainingDataService(),
   openingTrainingService = fakeOpeningTrainingService(),
+  reviewTrainingService = fakeReviewTrainingService(),
   section = 'play',
 }: {
   initialFen?: string;
   trainingDataService?: TrainingDataService;
   openingTrainingService?: OpeningTrainingService;
+  reviewTrainingService?: ReviewTrainingService;
   section?: 'train' | 'play' | 'data';
 } = {}) {
   const rendered = render(
@@ -101,6 +115,7 @@ function renderApp({
       initialFen={initialFen}
       trainingDataService={trainingDataService}
       openingTrainingService={openingTrainingService}
+      reviewTrainingService={reviewTrainingService}
     />,
   );
   if (section !== 'train') {
@@ -247,4 +262,11 @@ test('opens on Train and preserves the Play and Data surfaces', async () => {
   expect(screen.getByLabelText('Chess game')).toBeInTheDocument();
   await user.click(screen.getByRole('tab', { name: 'Data' }));
   expect(await screen.findByRole('heading', { name: 'Training data' })).toBeInTheDocument();
+
+test('composes the Phase 4 Review Due surface on Train', async () => {
+  renderApp({ section: 'train' });
+
+  expect(await screen.findByText(/phase 4 · adaptive opening training/i)).toBeInTheDocument();
+  expect(await screen.findByText(/3 due · 2 new available/i)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^review due$/i })).toBeInTheDocument();
 });
