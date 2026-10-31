@@ -41,7 +41,7 @@ async function importWhiteRepertoire(page: Page) {
   await page.getByRole('button', { name: 'Create repertoire' }).click();
 
   await expect(page.getByRole('heading', { name: 'Opening training' })).toBeVisible();
-  await expect(page.getByText('E2E White')).toBeVisible();
+  await expect(page.getByRole('radio', { name: /E2E White/ })).toBeVisible();
 }
 
 async function clickSquare(page: Page, square: string) {
@@ -79,8 +79,8 @@ test('imports a multi-game PGN, persists it, records a Practice Line attempt, an
 test('launches Quick Recall from the built-in demo without depending on random prompt selection', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Try Demo' }).click();
-  await expect(page.getByText('Practice Line')).toBeVisible();
   await expect(page.locator(BOARD)).toBeVisible();
+  await expect(page.getByText('Practice Line', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Exit session' }).click();
   await expect(page.getByRole('heading', { name: 'Opening training' })).toBeVisible();
