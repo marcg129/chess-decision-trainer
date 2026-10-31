@@ -57,11 +57,12 @@ test('imports a multi-game PGN, persists it, records a Practice Line attempt, an
   await importWhiteRepertoire(page);
 
   await page.reload();
-  await expect(page.getByText('E2E White')).toBeVisible();
+  await expect(page.getByRole('radio', { name: /E2E White/ })).toBeVisible();
   await page.getByRole('radio', { name: /E2E White/ }).check();
   await page.getByRole('button', { name: 'Practice Line' }).click();
 
-  await expect(page.getByText('Practice Line')).toBeVisible();
+  await expect(page.locator(BOARD)).toBeVisible();
+  await expect(page.getByText('Practice Line', { exact: true })).toBeVisible();
   await clickSquare(page, 'e2');
   await clickSquare(page, 'e4');
   await expect(page.getByText(/^Correct\.$/)).toBeVisible();
