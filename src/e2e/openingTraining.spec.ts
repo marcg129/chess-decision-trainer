@@ -102,6 +102,31 @@ async function markFirstScheduledCardDue(page: Page) {
   });
 }
 
+
+async function countPersistedRelearningAttempts(page: Page): Promise<number> {
+  return page.evaluate(async () =>
+    new Promise<number>((resolve, reject) => {
+      const request = indexedDB.open('chess-decision-trainer');
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+        const transaction = db.transaction('trainingAttempts', 'readonly');
+        const getAll = transaction.objectStore('trainingAttempts').getAll();
+        getAll.onerror = () => reject(getAll.error);
+        getAll.onsuccess = () => {
+          const count = getAll.result.filter(
+            (attempt: any) =>
+              attempt?.review?.kind === 'relearning'
+              && attempt?.review?.schedulingApplied === false,
+          ).length;
+          db.close();
+          resolve(count);
+        };
+      };
+    }),
+  );
+}
+
 async function reviewBoardOrientation(page: Page): Promise<'white' | 'black'> {
   const a1 = await page.locator('#review-training-board-square-a1').boundingBox();
   const h8 = await page.locator('#review-training-board-square-h8').boundingBox();
@@ -327,5 +352,6 @@ test('failed scheduled recall waits for three prompts and two minutes before rel
   await expect(page.getByText('Review Due · Relearning', { exact: true })).toBeVisible();
 
   await playReviewMove(page, 'e2', 'e4');
-  await expect(page.getByText(/relearned/)).toBeVisible();
+  await expect(page.getByText('Review Due · Relearning', { exact: true })).toHaveCount(0);
+  await expect.poll(() => countPersistedRelearningAttempts(page)).toBe(1);
 });
